@@ -154,4 +154,4 @@ API Docs: **http://localhost:8000/docs**
 - **Message History** — Last 50 messages loaded on room join
 - **Online Users** — Live online user list per room
 - **Auto Read** — Messages auto-marked as read when received
-# nexchat
+# livechat
