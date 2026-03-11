@@ -1,0 +1,3399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LiveChat — Real-Time Messaging</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #16161f;
+    --border: #1e1e2e;
+    --accent: #7c6af7;
+    --accent2: #a78bfa;
+    --accent-glow: rgba(124,106,247,0.18);
+    --green: #34d399;
+    --red: #f87171;
+    --amber: #fbbf24;
+    --text: #e2e0f0;
+    --muted: #6b6882;
+    --radius: 14px;
+    --mono: 'DM Mono', monospace;
+    --display: 'Syne', sans-serif;
+    --body: 'Inter', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--body);
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Noise overlay ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.4;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 28px;
+    height: 60px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+    position: relative;
+    z-index: 10;
+  }
+
+  .logo {
+    font-family: var(--display);
+    font-size: 1.3rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--accent), var(--accent2), #ec4899);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.02em;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 0.8rem;
+  }
+
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: all 0.3s;
+    box-shadow: 0 0 0 0 transparent;
+  }
+  .status-dot.connected {
+    background: var(--green);
+    box-shadow: 0 0 0 3px rgba(52,211,153,0.2);
+    animation: pulse-green 2s infinite;
+  }
+  @keyframes pulse-green {
+    0%,100% { box-shadow: 0 0 0 3px rgba(52,211,153,0.2); }
+    50% { box-shadow: 0 0 0 6px rgba(52,211,153,0.05); }
+  }
+
+  #username-display {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+
+  /* ── Layout ── */
+  .layout {
+    position: fixed;
+    top: 60px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: row;
+    overflow: hidden;
+    z-index: 1;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 260px;
+    flex-shrink: 0;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 100%;
+  }
+
+  .sidebar-section {
+    padding: 18px 16px 10px;
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+  }
+
+  .rooms-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 8px;
+    min-height: 50px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+    background: transparent;
+  }
+
+  .room-item {
+    padding: 10px 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.88rem;
+    color: #a09cb8;
+    transition: all 0.15s;
+    margin-bottom: 2px;
+    position: relative;
+  }
+  .room-item:hover { background: var(--surface2); color: var(--text); }
+  .room-item.active {
+    background: var(--accent-glow);
+    color: var(--accent2);
+    border: 1px solid rgba(124,106,247,0.2);
+  }
+
+  .room-hash {
+    font-family: var(--mono);
+    font-size: 1rem;
+    opacity: 0.5;
+  }
+
+  .room-badge {
+    margin-left: auto;
+    background: var(--accent);
+    color: white;
+    border-radius: 999px;
+    padding: 1px 7px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    display: none;
+  }
+  .room-badge.show { display: block; }
+
+  .add-room {
+    margin: 8px;
+    display: flex;
+    gap: 6px;
+  }
+  .add-room input {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 0.8rem;
+    color: var(--text);
+    font-family: var(--mono);
+    outline: none;
+  }
+  .add-room input:focus { border-color: var(--accent); }
+  .add-room button {
+    background: var(--accent);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    width: 32px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: opacity 0.15s;
+  }
+  .add-room button:hover { opacity: 0.85; }
+
+  /* Online users */
+  .online-section {
+    border-top: 1px solid var(--border);
+    padding: 12px 8px;
+    max-height: 180px;
+    overflow-y: auto;
+  }
+
+  .online-user {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 7px;
+    font-size: 0.82rem;
+    color: var(--muted);
+  }
+  .online-user .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    flex-shrink: 0;
+  }
+
+  /* ── Auth Panel ── */
+  .auth-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 12px 10px;
+    border-top: 1px solid var(--border);
+  }
+
+  .auth-input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 0.8rem;
+    color: var(--text);
+    font-family: var(--body);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .auth-input:focus { border-color: var(--accent); }
+
+  .btn {
+    width: 100%;
+    padding: 9px;
+    border: none;
+    border-radius: 9px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: var(--display);
+  }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { background: var(--accent2); transform: translateY(-1px); }
+  .btn-ghost {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    font-size: 0.75rem;
+    padding: 6px;
+  }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent2); }
+
+  .auth-tabs {
+    display: flex;
+    gap: 4px;
+    width: 100%;
+    background: var(--surface2);
+    border-radius: 8px;
+    padding: 3px;
+    margin-bottom: 4px;
+  }
+  .auth-tab {
+    flex: 1;
+    padding: 5px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: var(--body);
+  }
+  .auth-tab.active { background: var(--accent); color: white; }
+
+  /* ── Chat Area ── */
+  .chat-area {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg);
+    position: relative;
+  }
+
+  .chat-header {
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+
+  .chat-room-name {
+    font-family: var(--display);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .chat-online-count {
+    font-size: 0.75rem;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+
+  /* ── Messages ── */
+  .messages-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .msg-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 12px;
+  }
+
+  .msg-header {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 3px;
+    padding-left: 44px;
+  }
+
+  .msg-username {
+    font-weight: 600;
+    font-size: 0.88rem;
+    color: var(--accent2);
+    font-family: var(--display);
+  }
+
+  .msg-username.self { color: var(--green); }
+
+  .msg-timestamp {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--muted);
+  }
+
+  .msg-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 2px 0;
+    position: relative;
+  }
+  /* Sender (self) — right side */
+  .msg-row.self-row {
+    flex-direction: row-reverse;
+  }
+
+  .msg-row:hover .msg-actions { opacity: 1; }
+
+  .avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    font-weight: 700;
+    font-family: var(--display);
+    opacity: 0;
+    margin-bottom: 2px;
+  }
+  .avatar.show { opacity: 1; }
+  .avatar.self { background: rgba(124,106,247,0.3); color: #a78bfa; }
+  .avatar.other { background: var(--accent-glow); color: var(--accent2); }
+
+  .msg-bubble {
+    max-width: 100%;
+    min-width: 60px;
+    padding: 8px 13px 6px;
+    border-radius: 18px;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    word-break: break-word;
+    white-space: pre-wrap;
+    position: relative;
+    transition: border-color 0.2s;
+    border-bottom-left-radius: 4px;
+  }
+
+  /* Sender bubble — right side purple */
+  .msg-bubble.self {
+    background: rgba(124,106,247,0.18);
+    border-color: rgba(124,106,247,0.3);
+    color: #e2dff0;
+    border-bottom-left-radius: 18px;
+    border-bottom-right-radius: 4px;
+  }
+
+  .msg-bubble.deleted {
+    opacity: 0.4;
+    font-style: italic;
+    color: var(--muted);
+  }
+
+  .msg-edited {
+    font-size: 0.65rem;
+    color: var(--muted);
+    font-family: var(--mono);
+    margin-left: 6px;
+  }
+
+  .msg-actions {
+    opacity: 0;
+    display: flex;
+    gap: 4px;
+    align-self: center;
+    transition: opacity 0.15s;
+  }
+
+  .action-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 0.7rem;
+    color: var(--muted);
+    cursor: pointer;
+    font-family: var(--mono);
+    transition: all 0.15s;
+  }
+  .action-btn:hover { border-color: var(--accent); color: var(--accent2); }
+
+  /* Message header (username + time) */
+  .msg-header {
+    font-size: 0.75rem;
+    margin-bottom: 2px;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .msg-row.self-row .msg-header { flex-direction: row-reverse; }
+
+  /* Read receipts */
+  .read-receipts {
+    font-size: 0.68rem;
+    margin-top: 2px;
+    color: var(--muted);
+    text-align: right;
+  }
+  .msg-row:not(.self-row) .read-receipts { text-align: left; }
+
+  /* Read receipts */
+  .read-receipts {
+    display: flex;
+    gap: 2px;
+    padding-left: 44px;
+    margin-top: 1px;
+  }
+  .read-tick {
+    font-size: 0.65rem;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+  .read-tick.seen { color: var(--accent2); }
+
+  /* File message */
+  .file-bubble {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--surface2);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    text-decoration: none;
+    color: var(--text);
+    transition: border-color 0.2s;
+    max-width: 280px;
+  }
+  .file-bubble:hover { border-color: var(--accent); }
+  .file-icon { font-size: 1.4rem; }
+  .file-info { display: flex; flex-direction: column; gap: 1px; }
+  .file-name { font-size: 0.82rem; font-weight: 500; }
+  .file-meta { font-size: 0.68rem; color: var(--muted); font-family: var(--mono); }
+
+  /* Image message */
+  .img-bubble {
+    max-width: 300px;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    cursor: pointer;
+  }
+  .img-bubble img { display: block; width: 100%; max-height: 220px; object-fit: cover; }
+
+  /* System message */
+  .sys-msg {
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--muted);
+    padding: 6px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .sys-msg::before, .sys-msg::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* Typing indicator */
+  .typing-bar {
+    padding: 6px 24px;
+    min-height: 26px;
+    font-size: 0.75rem;
+    color: var(--muted);
+    font-family: var(--mono);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .typing-dots span {
+    animation: bounce 1.4s infinite;
+    display: inline-block;
+  }
+  .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes bounce {
+    0%,60%,100% { transform: translateY(0); }
+    30% { transform: translateY(-4px); }
+  }
+
+  /* ── Input Area ── */
+  .input-area {
+    padding: 12px 24px 16px;
+    flex-shrink: 0;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .input-toolbar {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .toolbar-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--muted);
+    padding: 5px 10px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: var(--mono);
+  }
+  .toolbar-btn:hover { border-color: var(--accent); color: var(--accent2); background: var(--accent-glow); }
+
+  .input-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+  }
+
+  #message-input {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    padding: 11px 16px;
+    font-size: 0.9rem;
+    color: var(--text);
+    font-family: var(--body);
+    outline: none;
+    resize: none;
+    min-height: 44px;
+    max-height: 140px;
+    line-height: 1.5;
+    transition: border-color 0.2s;
+  }
+  #message-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+  #message-input::placeholder { color: var(--muted); }
+
+  .send-btn {
+    width: 44px; height: 44px;
+    border-radius: 11px;
+    border: none;
+    background: var(--accent);
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .send-btn:hover { background: var(--accent2); transform: scale(1.05); }
+  .send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  /* File input */
+  #file-input { display: none; }
+
+  /* Empty state */
+  .empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    gap: 12px;
+    font-size: 0.88rem;
+  }
+  .empty-icon { font-size: 3rem; opacity: 0.3; }
+  .empty-title { font-family: var(--display); font-size: 1.1rem; color: var(--text); opacity: 0.4; }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 18px;
+    font-size: 0.83rem;
+    color: var(--text);
+    z-index: 1000;
+    transform: translateY(60px);
+    opacity: 0;
+    transition: all 0.3s cubic-bezier(.34,1.56,.64,1);
+    max-width: 300px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.success { border-color: var(--green); }
+  .toast.error { border-color: var(--red); }
+
+  /* Login screen overlay */
+  #auth-gate {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+
+  .auth-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 40px 36px;
+    width: 380px;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+  }
+
+  .auth-logo {
+    font-family: var(--display);
+    font-size: 2rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--accent), var(--accent2), #ec4899);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-align: center;
+    margin-bottom: 4px;
+  }
+  .auth-tagline {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.82rem;
+    margin-bottom: 28px;
+    font-family: var(--mono);
+  }
+
+  .form-group { margin-bottom: 12px; }
+  .form-group label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--muted);
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 5px;
+  }
+  .form-group input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 10px 14px;
+    font-size: 0.88rem;
+    color: var(--text);
+    outline: none;
+    font-family: var(--body);
+    transition: border-color 0.2s;
+  }
+  .form-group input:focus { border-color: var(--accent); }
+
+  .auth-submit {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 11px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: white;
+    font-size: 0.9rem;
+    font-weight: 700;
+    font-family: var(--display);
+    cursor: pointer;
+    margin-top: 8px;
+    transition: all 0.2s;
+    letter-spacing: 0.02em;
+  }
+  .auth-submit:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(124,106,247,0.4); }
+
+  .auth-switch {
+    text-align: center;
+    margin-top: 16px;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+  .auth-switch a {
+    color: var(--accent2);
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .auth-switch a:hover { text-decoration: underline; }
+
+  .auth-tabs-outer {
+    display: flex;
+    gap: 4px;
+    background: var(--surface2);
+    border-radius: 10px;
+    padding: 4px;
+    margin-bottom: 22px;
+  }
+  .auth-tab-btn {
+    flex: 1;
+    padding: 8px;
+    border: none;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 0.85rem;
+    cursor: pointer;
+    font-family: var(--display);
+    font-weight: 600;
+    transition: all 0.15s;
+  }
+  .auth-tab-btn.active { background: var(--accent); color: white; }
+
+
+  /* ── Room Context Menu (double-click) ── */
+  .room-ctx-menu {
+    position: fixed;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 6px;
+    z-index: 500;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    min-width: 180px;
+    opacity: 0;
+    transform: scale(0.95);
+    transition: all 0.15s cubic-bezier(.34,1.56,.64,1);
+    pointer-events: none;
+  }
+  .room-ctx-menu.show {
+    opacity: 1;
+    transform: scale(1);
+    pointer-events: all;
+  }
+  .ctx-room-label {
+    padding: 6px 10px 8px;
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+  .ctx-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.83rem;
+    cursor: pointer;
+    transition: background 0.1s;
+    color: var(--text);
+  }
+  .ctx-item:hover { background: var(--surface2); }
+  .ctx-item.danger { color: var(--red); }
+  .ctx-item.danger:hover { background: rgba(248,113,113,0.08); }
+  .ctx-item.warn { color: var(--amber); }
+  .ctx-item.warn:hover { background: rgba(251,191,36,0.08); }
+  .ctx-icon { font-size: 0.9rem; width: 18px; text-align: center; }
+
+  /* Blocked badge on room */
+  .room-item .blocked-badge {
+    margin-left: auto;
+    font-size: 0.6rem;
+    font-family: var(--mono);
+    color: var(--amber);
+    background: rgba(251,191,36,0.1);
+    border: 1px solid rgba(251,191,36,0.2);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+
+  /* Message blocked overlay */
+  .blocked-msg-notice {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.8rem;
+  }
+  .blocked-msg-notice .blocked-icon { font-size: 2rem; margin-bottom: 10px; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  /* ── Profile Button & Dropdown ── */
+  .profile-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 5px 10px 5px 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+  }
+  .profile-btn:hover { border-color: var(--accent); background: var(--accent-glow); }
+
+  .profile-avatar {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent), #ec4899);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    font-weight: 800;
+    color: white;
+    font-family: var(--display);
+    flex-shrink: 0;
+  }
+
+  .profile-name {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--text);
+  }
+
+  .profile-chevron {
+    font-size: 0.6rem;
+    color: var(--muted);
+    transition: transform 0.2s;
+  }
+  .profile-btn.open .profile-chevron { transform: rotate(180deg); }
+
+  /* Dropdown panel */
+  .profile-dropdown {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    width: 280px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+    z-index: 200;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(-8px) scale(0.97);
+    pointer-events: none;
+    transition: all 0.2s cubic-bezier(.34,1.56,.64,1);
+  }
+  .profile-dropdown.open {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: all;
+  }
+
+  .profile-dropdown-header {
+    padding: 20px;
+    background: linear-gradient(135deg, rgba(124,106,247,0.15), rgba(236,72,153,0.08));
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .profile-dropdown-avatar {
+    width: 52px; height: 52px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, var(--accent), #ec4899);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: white;
+    font-family: var(--display);
+    flex-shrink: 0;
+    box-shadow: 0 4px 16px rgba(124,106,247,0.4);
+  }
+
+  .profile-dropdown-info { flex: 1; min-width: 0; }
+  .profile-dropdown-username {
+    font-family: var(--display);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 2px;
+  }
+  .profile-dropdown-email {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .profile-dropdown-body { padding: 12px; }
+
+  .profile-stat-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .profile-stat {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 8px;
+    text-align: center;
+  }
+  .profile-stat-value {
+    font-family: var(--display);
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--accent2);
+    display: block;
+  }
+  .profile-stat-label {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .profile-info-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    margin-bottom: 4px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+  }
+  .profile-info-icon { font-size: 0.85rem; width: 18px; text-align: center; }
+  .profile-info-content { flex: 1; min-width: 0; }
+  .profile-info-label {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .profile-info-value {
+    font-size: 0.82rem;
+    color: var(--text);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .profile-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(52,211,153,0.12);
+    border: 1px solid rgba(52,211,153,0.25);
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 0.68rem;
+    color: var(--green);
+    font-family: var(--mono);
+  }
+  .profile-status-badge::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--green);
+  }
+
+  .profile-dropdown-footer {
+    padding: 10px 12px;
+    border-top: 1px solid var(--border);
+  }
+
+  .profile-logout-btn {
+    width: 100%;
+    padding: 9px;
+    border: 1px solid rgba(248,113,113,0.3);
+    border-radius: 9px;
+    background: rgba(248,113,113,0.06);
+    color: var(--red);
+    font-size: 0.82rem;
+    font-weight: 600;
+    font-family: var(--display);
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.02em;
+  }
+  .profile-logout-btn:hover {
+    background: rgba(248,113,113,0.15);
+    border-color: var(--red);
+  }
+
+  /* ── Phone flag + input ── */
+  .phone-row {
+    display: flex;
+    gap: 6px;
+  }
+  .phone-flag {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 10px 10px;
+    font-size: 0.88rem;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    font-family: var(--mono);
+    cursor: pointer;
+    position: relative;
+    user-select: none;
+    transition: border-color 0.2s;
+    flex-shrink: 0;
+  }
+  .phone-flag:hover { border-color: var(--accent); }
+  .phone-flag select {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+  }
+  .phone-input-wrap {
+    flex: 1;
+    position: relative;
+  }
+  .phone-input-wrap input {
+    width: 100%;
+  }
+
+  /* ── Password with show/hide toggle ── */
+  .password-wrap {
+    position: relative;
+  }
+  .password-wrap input {
+    width: 100%;
+    padding-right: 42px !important;
+  }
+  .pw-toggle {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 1rem;
+    padding: 0;
+    line-height: 1;
+    transition: color 0.15s;
+  }
+  .pw-toggle:hover { color: var(--accent2); }
+
+  /* Password strength bar */
+  .pw-strength {
+    height: 3px;
+    border-radius: 2px;
+    margin-top: 5px;
+    background: var(--border);
+    overflow: hidden;
+  }
+  .pw-strength-bar {
+    height: 100%;
+    border-radius: 2px;
+    width: 0%;
+    transition: width 0.3s, background 0.3s;
+  }
+  .pw-hint {
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    margin-top: 3px;
+  }
+
+  /* Auto-fill username highlight */
+  @keyframes autofill-flash {
+    0% { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+    100% { border-color: var(--border); box-shadow: none; }
+  }
+  .autofilled { animation: autofill-flash 1.5s ease forwards; }
+
+  /* ── Mobile Hamburger Button ── */
+  #mobile-menu-btn {
+    display: none;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 8px;
+  }
+  #mobile-menu-btn:hover { background: var(--surface2); }
+
+  /* ── Mobile Back Button ── */
+  #mobile-back-btn {
+    display: none;
+    background: none;
+    border: none;
+    color: var(--accent2);
+    font-size: 0.9rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 8px;
+    font-weight: 600;
+  }
+
+  /* ── Tablet (max 768px) ── */
+  @media (max-width: 768px) {
+    /* Header compact */
+    nav {
+      padding: 0 14px !important;
+      height: 54px !important;
+    }
+    .logo { font-size: 1.1rem !important; }
+    #username-display { display: none; }
+    #admin-panel-btn { padding: 4px 8px !important; font-size: 0.7rem !important; }
+
+    /* Layout fills full height below header */
+    .layout { top: 54px !important; }
+
+    /* Sidebar: full width, hidden behind chat on mobile */
+    .sidebar {
+      width: 100% !important;
+      position: absolute !important;
+      left: 0; top: 0; bottom: 0;
+      z-index: 50;
+      transform: translateX(0);
+      transition: transform 0.25s cubic-bezier(.4,0,.2,1);
+    }
+    .sidebar.hidden {
+      transform: translateX(-100%) !important;
+    }
+
+    /* Chat area: full width */
+    .chat-area {
+      width: 100% !important;
+      flex: 1 !important;
+    }
+
+    /* Show mobile menu/back buttons */
+    #mobile-menu-btn { display: flex !important; align-items: center; }
+    #mobile-back-btn { display: flex !important; align-items: center; gap: 4px; }
+
+    /* Chat header compact */
+    .chat-header { padding: 10px 14px !important; }
+    .chat-room-name { font-size: 0.9rem !important; }
+
+    /* Messages padding */
+    .messages-container { padding: 12px 12px !important; }
+
+    /* Input area */
+    .input-area { padding: 8px 10px !important; }
+    .input-toolbar { gap: 4px !important; }
+    .toolbar-btn { padding: 5px 8px !important; font-size: 0.8rem !important; }
+
+    /* Message bubbles */
+    .msg-bubble { max-width: 80vw !important; font-size: 0.88rem !important; }
+
+    /* Profile dropdown */
+    .profile-dropdown { right: -10px !important; width: 260px !important; }
+
+    /* Room info panel full screen on mobile */
+    #room-info-panel { width: 100% !important; }
+
+    /* Admin panel */
+    #admin-panel { padding-top: 0 !important; align-items: stretch !important; }
+    #admin-panel > div { border-radius: 0 !important; width: 100% !important; max-width: 100% !important; margin: 0 !important; }
+    #admin-stats { grid-template-columns: repeat(2,1fr) !important; }
+
+    /* Custom modal */
+    #custom-modal > div { padding: 22px 18px !important; min-width: unset !important; width: 88% !important; }
+
+    /* User info popup */
+    #user-info-popup { left: 50% !important; transform: translate(-50%, -50%) !important; width: 88% !important; }
+
+    /* Auth forms */
+    .auth-card { padding: 28px 20px !important; width: 92% !important; }
+  }
+
+  /* ── Small phones (max 480px) ── */
+  @media (max-width: 480px) {
+    .toolbar-btn:nth-child(n+4) { display: none; }
+    .msg-bubble { max-width: 88vw !important; }
+    .profile-dropdown { width: 240px !important; right: -8px !important; }
+    .chat-room-name { font-size: 0.85rem !important; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  }
+
+</style>
+</head>
+<body>
+
+<!-- ── Auth Gate ─────────────────────────────────────────────────────────── -->
+<div id="auth-gate">
+  <div class="auth-card">
+    <div class="auth-logo">LiveChat</div>
+    <div class="auth-tagline">// real-time • encrypted • instant</div>
+
+    <div class="auth-tabs-outer">
+      <button class="auth-tab-btn active" onclick="setAuthTab('login')">Login</button>
+      <button class="auth-tab-btn" onclick="setAuthTab('register')">Register</button>
+    </div>
+
+    <!-- ── LOGIN FORM ── -->
+    <div id="login-form">
+      <div class="form-group">
+        <label>Username or Mobile</label>
+        <input type="text" id="login-username" placeholder="your_username or +91..." autocomplete="username" />
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <div class="password-wrap">
+          <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" />
+          <button type="button" class="pw-toggle" onclick="togglePw('login-password',this)" tabindex="-1">👁</button>
+        </div>
+      </div>
+      <button class="auth-submit" id="login-submit-btn" onclick="doLogin()">Sign In →</button>
+    </div>
+
+    <!-- ── LOGIN OTP STEP ── -->
+    <div id="login-otp-form" style="display:none">
+      <div style="text-align:center;margin-bottom:16px">
+        <div style="font-size:2rem">📱</div>
+        <div style="color:var(--text);font-weight:600;margin:6px 0">OTP Sent!</div>
+        <div style="color:var(--muted);font-size:0.82rem" id="login-otp-hint">Enter the 6-digit code sent to your mobile</div>
+      </div>
+      <div class="form-group">
+        <label>Enter OTP</label>
+        <input type="text" id="login-otp-input" placeholder="• • • • • •" maxlength="6" style="letter-spacing:8px;font-size:1.3rem;text-align:center" />
+      </div>
+      <button class="auth-submit" onclick="doVerifyLoginOtp()">Verify & Login →</button>
+      <div style="text-align:center;margin-top:10px">
+        <span style="color:var(--muted);font-size:0.8rem">Didn't receive? </span>
+        <button onclick="doLogin(true)" style="background:none;border:none;color:var(--accent);font-size:0.8rem;cursor:pointer">Resend OTP</button>
+      </div>
+    </div>
+
+    <!-- ── REGISTER FORM ── -->
+    <div id="register-form" style="display:none">
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="reg-username" placeholder="your_username" oninput="syncLoginUsername(this.value)" />
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="reg-email" placeholder="you@example.com" />
+      </div>
+      <div class="form-group">
+        <label>Mobile Number</label>
+        <div class="phone-row">
+          <div class="phone-flag" id="phone-flag-display">
+            🇮🇳 +91
+            <select id="country-code" onchange="updateFlag()">
+              <option value="+91" data-flag="🇮🇳">🇮🇳 India +91</option>
+              <option value="+1" data-flag="🇺🇸">🇺🇸 USA +1</option>
+              <option value="+44" data-flag="🇬🇧">🇬🇧 UK +44</option>
+              <option value="+61" data-flag="🇦🇺">🇦🇺 Australia +61</option>
+              <option value="+971" data-flag="🇦🇪">🇦🇪 UAE +971</option>
+              <option value="+65" data-flag="🇸🇬">🇸🇬 Singapore +65</option>
+              <option value="+81" data-flag="🇯🇵">🇯🇵 Japan +81</option>
+              <option value="+86" data-flag="🇨🇳">🇨🇳 China +86</option>
+              <option value="+49" data-flag="🇩🇪">🇩🇪 Germany +49</option>
+              <option value="+33" data-flag="🇫🇷">🇫🇷 France +33</option>
+            </select>
+          </div>
+          <div class="phone-input-wrap">
+            <input type="tel" id="reg-phone" placeholder="98765 43210" maxlength="15"
+              style="background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:10px 14px;font-size:0.88rem;color:var(--text);outline:none;font-family:var(--body);transition:border-color 0.2s;width:100%"
+              onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'" />
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <div class="password-wrap">
+          <input type="password" id="reg-password" placeholder="min 6 chars" oninput="checkPwStrength(this.value)" />
+          <button type="button" class="pw-toggle" onclick="togglePw('reg-password',this)" tabindex="-1">👁</button>
+        </div>
+        <div class="pw-strength"><div class="pw-strength-bar" id="pw-bar"></div></div>
+        <div class="pw-hint" id="pw-hint" style="color:var(--muted)"></div>
+      </div>
+      <button class="auth-submit" onclick="doRegister()">Create Account →</button>
+    </div>
+
+    <!-- ── REGISTER OTP STEP ── -->
+    <div id="register-otp-form" style="display:none">
+      <div style="text-align:center;margin-bottom:16px">
+        <div style="font-size:2rem">📱</div>
+        <div style="color:var(--text);font-weight:600;margin:6px 0">Verify Your Number</div>
+        <div style="color:var(--muted);font-size:0.82rem" id="reg-otp-hint">Enter the 6-digit code sent to your mobile</div>
+      </div>
+      <div class="form-group">
+        <label>Enter OTP</label>
+        <input type="text" id="reg-otp-input" placeholder="• • • • • •" maxlength="6" style="letter-spacing:8px;font-size:1.3rem;text-align:center" />
+      </div>
+      <button class="auth-submit" onclick="doVerifyRegisterOtp()">Verify & Create Account →</button>
+      <div style="text-align:center;margin-top:10px">
+        <span style="color:var(--muted);font-size:0.8rem">Didn't receive? </span>
+        <button onclick="doRegister(true)" style="background:none;border:none;color:var(--accent);font-size:0.8rem;cursor:pointer">Resend OTP</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Main App ──────────────────────────────────────────────────────────── -->
+<header>
+  <div style="display:flex;align-items:center;gap:10px">
+    <button id="mobile-menu-btn" onclick="toggleMobileSidebar()">☰</button>
+    <div class="logo">LiveChat <span style="font-size:0.6rem;opacity:0.5;font-family:monospace">v4</span></div>
+  </div>
+  <div class="header-right">
+    <div class="status-dot" id="status-dot"></div>
+    <button id="admin-panel-btn" onclick="toggleAdminPanel()" style="display:none;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fc8181;border-radius:10px;padding:6px 14px;font-size:0.78rem;cursor:pointer;font-weight:600;margin-right:8px;">⚙️ Admin</button>
+    <div style="position:relative">
+      <button class="profile-btn" id="profile-btn" onclick="toggleProfile()">
+        <div class="profile-avatar" id="header-avatar">?</div>
+        <span class="profile-name" id="username-display"></span>
+        <span class="profile-chevron">&#9660;</span>
+      </button>
+      <div class="profile-dropdown" id="profile-dropdown">
+        <div class="profile-dropdown-header">
+          <div class="profile-dropdown-avatar" id="dropdown-avatar">?</div>
+          <div class="profile-dropdown-info">
+            <div class="profile-dropdown-username" id="dropdown-username">—</div>
+            <div class="profile-dropdown-email" id="dropdown-email">—</div>
+            <div style="margin-top:6px"><span class="profile-status-badge">Online</span></div>
+          </div>
+        </div>
+        <div class="profile-dropdown-body">
+          <div class="profile-stat-row">
+            <div class="profile-stat">
+              <span class="profile-stat-value" id="stat-messages">0</span>
+              <span class="profile-stat-label">Messages</span>
+            </div>
+            <div class="profile-stat">
+              <span class="profile-stat-value" id="stat-rooms">0</span>
+              <span class="profile-stat-label">Groups</span>
+            </div>
+            <div class="profile-stat">
+              <span class="profile-stat-value" id="stat-joined">—</span>
+              <span class="profile-stat-label">Joined</span>
+            </div>
+          </div>
+          <div class="profile-info-row">
+            <span class="profile-info-icon">&#128100;</span>
+            <div class="profile-info-content">
+              <div class="profile-info-label">Username</div>
+              <div class="profile-info-value" id="info-username">—</div>
+            </div>
+          </div>
+          <div class="profile-info-row">
+            <span class="profile-info-icon">&#9993;&#65039;</span>
+            <div class="profile-info-content">
+              <div class="profile-info-label">Email</div>
+              <div class="profile-info-value" id="info-email">—</div>
+            </div>
+          </div>
+          <div class="profile-info-row">
+            <span class="profile-info-icon">&#128221;</span>
+            <div class="profile-info-content">
+              <div class="profile-info-label">User ID</div>
+              <div class="profile-info-value" id="info-id">—</div>
+            </div>
+          </div>
+          <div class="profile-info-row">
+            <span class="profile-info-icon">📱</span>
+            <div class="profile-info-content">
+              <div class="profile-info-label">Mobile</div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div class="profile-info-value" id="info-phone">—</div>
+                <button onclick="updateMobile()" style="font-size:0.65rem;padding:2px 8px;border-radius:6px;border:1px solid rgba(124,106,247,0.4);background:rgba(124,106,247,0.15);color:#a78bfa;cursor:pointer;">edit</button>
+              </div>
+            </div>
+          </div>
+          <div class="profile-info-row">
+            <span class="profile-info-icon">&#128197;</span>
+            <div class="profile-info-content">
+              <div class="profile-info-label">Member Since</div>
+              <div class="profile-info-value" id="info-created">—</div>
+            </div>
+          </div>
+        </div>
+        <div class="profile-dropdown-footer">
+          <button class="profile-logout-btn" onclick="logout()">Sign Out &#8594;</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-section">Chats</div>
+    <div class="rooms-list" id="rooms-list">
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;cursor:pointer;font-size:0.88rem;color:#c4c0d8;margin-bottom:2px;" onclick="joinRoom('YOU')">
+        <span style="font-family:monospace;opacity:0.6">#</span><span>YOU</span>
+      </div>
+      
+    </div>
+    <div class="add-room">
+      <input type="text" id="new-room-input" placeholder="new-contact" maxlength="40" />
+      <button onclick="addRoom()">+</button>
+    </div>
+
+    <!-- Private Rooms Section -->
+    <div class="online-section">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 8px 4px">
+        <div class="sidebar-section" style="padding:0">Private</div>
+        <div style="display:flex;gap:4px">
+          <button onclick="showCreatePrivateRoom()" title="Create private group" style="background:rgba(124,106,247,0.2);border:none;color:#a78bfa;border-radius:6px;padding:2px 7px;cursor:pointer;font-size:0.75rem">+ New</button>
+          <button onclick="showJoinPrivateRoom()" title="Join with invite code" style="background:rgba(124,106,247,0.1);border:none;color:#a78bfa;border-radius:6px;padding:2px 7px;cursor:pointer;font-size:0.75rem">Join</button>
+        </div>
+      </div>
+      <div id="private-rooms-list"></div>
+    </div>
+
+    <!-- Direct Messages Section -->
+    <div class="online-section">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 8px 4px">
+        <div class="sidebar-section" style="padding:0">Direct Messages</div>
+        <button onclick="showNewDM()" title="New DM" style="background:rgba(124,106,247,0.2);border:none;color:#a78bfa;border-radius:6px;padding:2px 7px;cursor:pointer;font-size:0.75rem">+ DM</button>
+      </div>
+      <div id="dm-list"></div>
+    </div>
+
+    <!-- Online Users -->
+    <div class="online-section">
+      <div class="sidebar-section" style="padding:0 8px 8px">Online</div>
+      <div id="online-list"></div>
+    </div>
+
+  </div>
+
+  <!-- Chat Area -->
+  <div class="chat-area" id="chat-area">
+    <div class="empty-state" id="empty-state">
+      <div class="empty-icon">💬</div>
+      <div class="empty-title">Select a contact to start chatting</div>
+      <div style="font-family:var(--mono);font-size:0.72rem">Choose a room from the sidebar</div>
+    </div>
+
+    <div id="chat-main" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+      <div class="chat-header" id="chat-header-bar" onclick="toggleRoomInfoPanel()" style="cursor:pointer;user-select:none;" title="Click to view info">
+        <button id="mobile-back-btn" onclick="event.stopPropagation();showMobileSidebar()" style="margin-right:4px">← Back</button>
+        <div id="chat-header-avatar" style="width:40px;height:40px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1rem;color:white;flex-shrink:0;transition:opacity 0.2s"></div>
+        <div style="flex:1;min-width:0">
+          <div class="chat-room-name" id="room-title"># YOU</div>
+          <div class="chat-online-count" id="room-online-count">0 online</div>
+        </div>
+        <div style="color:var(--muted);font-size:0.75rem;opacity:0.5">ℹ️</div>
+      </div>
+
+      <!-- Room Info Side Panel (WhatsApp style) -->
+      <div id="room-info-panel" style="display:none;position:absolute;top:0;right:0;width:300px;height:100%;background:#13111f;border-left:1px solid var(--border);z-index:100;flex-direction:column;overflow-y:auto;">
+        <!-- Panel Header -->
+        <div style="padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;background:var(--surface)">
+          <button onclick="toggleRoomInfoPanel()" style="background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer;padding:0">✕</button>
+          <span style="font-weight:700;color:var(--text);font-size:0.95rem">Info</span>
+        </div>
+        <!-- Avatar & Name -->
+        <div style="padding:28px 18px 20px;text-align:center;border-bottom:1px solid var(--border)">
+          <div id="rip-avatar" style="width:72px;height:72px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:1.8rem;font-weight:800;color:white;margin:0 auto 14px"></div>
+          <div id="rip-name" style="font-size:1.1rem;font-weight:700;color:var(--text);margin-bottom:4px"></div>
+          <div id="rip-sub" style="font-size:0.78rem;color:var(--muted)"></div>
+        </div>
+        <!-- Info rows -->
+        <div id="rip-rows" style="padding:12px 0"></div>
+        <!-- Members list (for private rooms / DMs) -->
+        <div id="rip-members" style="display:none;padding:0 0 16px">
+          <div style="padding:10px 18px 6px;font-size:0.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Members</div>
+          <div id="rip-members-list"></div>
+        </div>
+        <!-- DM Actions -->
+        <div id="rip-actions" style="padding:16px 18px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px;margin-top:auto"></div>
+      </div>
+
+      <div class="messages-container" id="messages"></div>
+
+      <div class="typing-bar" id="typing-bar"></div>
+
+      <div class="input-area">
+        <div class="input-toolbar">
+          <button class="toolbar-btn" onclick="document.getElementById('file-input').click()" title="Share file">📎 File</button>
+          <button class="toolbar-btn" onclick="insertEmoji('😀')">😀</button>
+          <button class="toolbar-btn" onclick="insertEmoji('👍')">👍</button>
+          <button class="toolbar-btn" onclick="insertEmoji('❤️')">❤️</button>
+          <button class="toolbar-btn" onclick="insertEmoji('🔥')">🔥</button>
+        </div>
+        <div class="input-row">
+          <textarea id="message-input" placeholder="Message .." rows="1"></textarea>
+          <button class="send-btn" onclick="sendMessage()" id="send-btn">↑</button>
+        </div>
+        <input type="file" id="file-input" onchange="handleFileUpload(event)" />
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- Room Context Menu -->
+<div class="room-ctx-menu" id="room-ctx-menu">
+  <div class="ctx-room-label" id="ctx-room-label"># room</div>
+  <!-- Private room only options -->
+  <div class="ctx-item" id="ctx-invite-code-item" style="display:none" onclick="ctxShowInviteCode()">
+    <span class="ctx-icon">🔑</span> View Invite Code
+  </div>
+  <div class="ctx-item" id="ctx-exit-room-item" style="display:none" onclick="ctxExitPrivateRoom()">
+    <span class="ctx-icon">🚪</span> Exit Room
+  </div>
+  <!-- Public room options -->
+  <div class="ctx-item" id="ctx-clear-item" onclick="ctxClearMessages()">
+    <span class="ctx-icon">🗑️</span> Clear local messages
+  </div>
+  <div class="ctx-item warn" id="ctx-block-item" onclick="ctxBlockRoom()">
+    <span class="ctx-icon">🚫</span> Block this room
+  </div>
+  <div class="ctx-item danger" id="ctx-delete-item" onclick="ctxDeleteRoom()">
+    <span class="ctx-icon">❌</span> Delete room
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- User Info Popup -->
+<div id="user-info-popup" style="display:none;position:fixed;z-index:9997;pointer-events:none;">
+  <div style="background:#1a1825;border:1px solid rgba(124,106,247,0.3);border-radius:16px;padding:0;min-width:240px;box-shadow:0 16px 48px rgba(0,0,0,0.7);overflow:hidden;pointer-events:all;">
+    <!-- Banner -->
+    <div id="uip-banner" style="height:52px;background:linear-gradient(135deg,#7c6af7,#a78bfa);position:relative;"></div>
+    <!-- Avatar -->
+    <div style="padding:0 18px;position:relative;margin-top:-28px;margin-bottom:0">
+      <div id="uip-avatar" style="width:52px;height:52px;border-radius:50%;background:#7c6af7;display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:800;color:white;border:3px solid #1a1825;"></div>
+    </div>
+    <!-- Info -->
+    <div style="padding:8px 18px 16px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+        <span id="uip-username" style="font-weight:700;color:#e2dff0;font-size:1rem"></span>
+        <span id="uip-admin-badge" style="display:none;background:rgba(239,68,68,0.15);color:#fc8181;border-radius:999px;padding:1px 7px;font-size:0.65rem;font-weight:600">ADMIN</span>
+      </div>
+      <div id="uip-email" style="color:#6b6882;font-size:0.78rem;margin-bottom:8px"></div>
+      <div id="uip-mobile" style="color:#6b6882;font-size:0.78rem;margin-bottom:10px"></div>
+      <div id="uip-actions" style="display:flex;gap:6px;margin-top:4px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Custom Modal -->
+<div id="custom-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+  <div style="background:#1a1825;border:1px solid rgba(124,106,247,0.3);border-radius:20px;padding:28px 32px;min-width:320px;max-width:420px;width:90%;box-shadow:0 24px 64px rgba(0,0,0,0.6);position:relative;">
+    <div id="modal-icon" style="font-size:2.5rem;text-align:center;margin-bottom:12px"></div>
+    <div id="modal-title" style="font-size:1.1rem;font-weight:700;color:#e2dff0;text-align:center;margin-bottom:8px"></div>
+    <div id="modal-body" style="color:#a09cb8;font-size:0.88rem;line-height:1.7;text-align:center;margin-bottom:20px"></div>
+    <div style="display:flex;gap:10px;justify-content:center" id="modal-buttons"></div>
+  </div>
+</div>
+
+<!-- Admin Panel -->
+<div id="admin-panel" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);align-items:flex-start;justify-content:center;padding-top:60px;overflow-y:auto;">
+  <div style="background:#13111f;border:1px solid rgba(239,68,68,0.2);border-radius:20px;width:95%;max-width:860px;margin-bottom:40px;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,0.7)">
+    <!-- Header -->
+    <div style="background:rgba(239,68,68,0.08);border-bottom:1px solid rgba(239,68,68,0.15);padding:20px 28px;display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-size:1.1rem;font-weight:700;color:#fc8181">⚙️ Admin Panel</div>
+        <div style="font-size:0.75rem;color:#6b6882;margin-top:2px">LiveChat Administration</div>
+      </div>
+      <button onclick="toggleAdminPanel()" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);color:#fc8181;border-radius:10px;padding:6px 14px;cursor:pointer">✕ Close</button>
+    </div>
+    <!-- Stats Row -->
+    <div id="admin-stats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:rgba(255,255,255,0.05);border-bottom:1px solid rgba(255,255,255,0.05)"></div>
+    <!-- Toolbar -->
+    <div style="padding:16px 24px;border-bottom:1px solid rgba(255,255,255,0.05);display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <input id="admin-search" type="text" placeholder="🔍 Search users..." oninput="adminSearch(this.value)"
+        style="flex:1;min-width:180px;background:#0f0e18;border:1px solid rgba(124,106,247,0.2);border-radius:10px;padding:8px 14px;color:#e2dff0;font-size:0.85rem;outline:none" />
+      <button onclick="loadAdminUsers()" style="background:rgba(124,106,247,0.15);border:1px solid rgba(124,106,247,0.3);color:#a78bfa;border-radius:10px;padding:8px 16px;cursor:pointer;font-size:0.82rem">↻ Refresh</button>
+      <button onclick="showCreateTestUser()" style="background:rgba(104,211,145,0.15);border:1px solid rgba(104,211,145,0.3);color:#68d391;border-radius:10px;padding:8px 16px;cursor:pointer;font-size:0.82rem;font-weight:600">➕ Test User</button>
+    </div>
+    <!-- Users Table -->
+    <div style="padding:0 24px 24px;overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;margin-top:16px" id="admin-users-table">
+        <thead>
+          <tr style="border-bottom:1px solid rgba(255,255,255,0.07)">
+            <th style="text-align:left;padding:8px 12px;color:#6b6882;font-size:0.72rem;text-transform:uppercase;letter-spacing:1px">User</th>
+            <th style="text-align:left;padding:8px 12px;color:#6b6882;font-size:0.72rem;text-transform:uppercase;letter-spacing:1px">Email</th>
+            <th style="text-align:center;padding:8px 12px;color:#6b6882;font-size:0.72rem;text-transform:uppercase;letter-spacing:1px">Msgs</th>
+            <th style="text-align:center;padding:8px 12px;color:#6b6882;font-size:0.72rem;text-transform:uppercase;letter-spacing:1px">Status</th>
+            <th style="text-align:center;padding:8px 12px;color:#6b6882;font-size:0.72rem;text-transform:uppercase;letter-spacing:1px">Joined</th>
+            <th style="text-align:center;padding:8px 12px;color:#6b6882;font-size:0.72rem;text-transform:uppercase;letter-spacing:1px">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="admin-users-body">
+          <tr><td colspan="6" style="text-align:center;padding:32px;color:#6b6882">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';  // same origin
+let token = localStorage.getItem('chat_token') || null;
+let currentUser = JSON.parse(localStorage.getItem('chat_user') || 'null');
+let ws = null;
+let currentRoom = null;
+let typingTimeout = null;
+const DEFAULTS = ['YOU'];
+
+function getRoomsKey() {
+  const u = JSON.parse(localStorage.getItem('chat_user') || 'null');
+  return u && u.username ? 'rooms_' + u.username : null;
+}
+function persistRooms() {
+  const key = getRoomsKey();
+  if (key) {
+    // Only persist custom rooms (not defaults) to avoid bloat
+    const custom = rooms.filter(r => !DEFAULTS.includes(r));
+    localStorage.setItem(key, JSON.stringify(custom));
+  }
+}
+function restoreRooms() {
+  const key = getRoomsKey();
+  let extra = [];
+  if (key) {
+    try {
+      const saved = localStorage.getItem(key);
+      if (saved) extra = JSON.parse(saved);
+      if (!Array.isArray(extra)) extra = [];
+    } catch(e) { extra = []; }
+  }
+  // Always include defaults + any user-added rooms, deduplicated
+  return [...new Set([...DEFAULTS, ...extra])];
+}
+
+let rooms = restoreRooms();
+let messageStore = {};
+let editingMessageId = null;
+let blockedRooms = new Set(JSON.parse(localStorage.getItem('chat_blocked') || '[]'));
+let ctxTargetRoom = null;
+
+// ── Auth helpers ─────────────────────────────────────────────────────────────
+let _pendingLoginMobile = null; // stores mobile for OTP verify step
+
+function setAuthTab(tab) {
+  document.querySelectorAll('.auth-tab-btn').forEach((b,i) => {
+    b.classList.toggle('active', (tab === 'login' && i === 0) || (tab === 'register' && i === 1));
+  });
+  // Hide all auth sub-forms
+  ['login-form','login-otp-form','register-form','register-otp-form'].forEach(id => {
+    document.getElementById(id).style.display = 'none';
+  });
+  document.getElementById(tab === 'login' ? 'login-form' : 'register-form').style.display = 'block';
+}
+
+async function doLogin(resend = false) {
+  const login = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value;
+  if (!login || !password) return toast('Fill in all fields', 'error');
+
+  const btn = document.getElementById('login-submit-btn');
+  btn.textContent = 'Sending OTP...'; btn.disabled = true;
+
+  try {
+    // First verify credentials, get mobile from server
+    const r = await fetch(`${API}/auth/login-preflight`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ login, password })
+    });
+    const d = await r.json();
+    btn.textContent = 'Sign In →'; btn.disabled = false;
+    if (!r.ok) return toast(d.detail || 'Login failed', 'error');
+
+    if (d.mobile) {
+      // Send OTP to mobile
+      const r2 = await fetch(`${API}/auth/send-otp`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ type: 'login', mobile: d.mobile })
+      });
+      const d2 = await r2.json();
+      if (!r2.ok) return toast(d2.detail || 'Failed to send OTP', 'error');
+      _pendingLoginMobile = d.mobile;
+      document.getElementById('login-otp-hint').textContent = `OTP sent to +${d.mobile}`;
+      document.getElementById('login-otp-input').value = '';
+      document.getElementById('login-form').style.display = 'none';
+      document.getElementById('login-otp-form').style.display = 'block';
+      toast(resend ? 'OTP resent!' : 'OTP sent to your mobile!', 'success');
+    } else {
+      // No mobile on account — direct login (ask user to add mobile)
+      toast('No mobile number on account. Login directly.', 'info');
+      await onAuth(d);
+    }
+  } catch(e) { btn.textContent = 'Sign In →'; btn.disabled = false; toast('Server error', 'error'); }
+}
+
+async function doVerifyLoginOtp() {
+  const otp = document.getElementById('login-otp-input').value.trim();
+  if (!otp || otp.length !== 6) return toast('Enter 6-digit OTP', 'error');
+  try {
+    const r = await fetch(`${API}/auth/verify-otp`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ mobile: _pendingLoginMobile, otp })
+    });
+    const d = await r.json();
+    if (!r.ok) return toast(d.detail || 'Invalid OTP', 'error');
+    document.getElementById('login-otp-form').style.display = 'none';
+    document.getElementById('login-form').style.display = 'block';
+    await onAuth(d);
+  } catch(e) { toast('Server error', 'error'); }
+}
+
+let _pendingRegisterPayload = null;
+let _pendingLoginPassword = null;
+
+async function doRegister(resend = false) {
+  const username = document.getElementById('reg-username').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
+  const password = document.getElementById('reg-password').value;
+  const phoneRaw = document.getElementById('reg-phone').value.trim().replace(/\s+/g,'');
+  const countryCode = document.getElementById('country-code').value.replace('+','');
+  const mobile = phoneRaw ? (countryCode + phoneRaw) : '';
+  if (!username || !email || !password) return toast('Fill in all fields', 'error');
+  if (password.length < 6) return toast('Password min 6 characters', 'error');
+  if (!mobile) return toast('Mobile number required for OTP verification', 'error');
+  if (!/^\d{6,15}$/.test(phoneRaw)) return toast('Enter valid mobile number', 'error');
+
+  _pendingRegisterPayload = { type: 'register', username, email, password, mobile };
+  try {
+    const r = await fetch(`${API}/auth/send-otp`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(_pendingRegisterPayload)
+    });
+    const d = await r.json();
+    if (!r.ok) return toast(d.detail || 'Failed to send OTP', 'error');
+    document.getElementById('reg-otp-hint').textContent = `OTP sent to +${mobile}`;
+    document.getElementById('reg-otp-input').value = '';
+    document.getElementById('register-form').style.display = 'none';
+    document.getElementById('register-otp-form').style.display = 'block';
+    toast(resend ? 'OTP resent!' : 'OTP sent to your mobile!', 'success');
+  } catch(e) { toast('Server error', 'error'); }
+}
+
+async function doVerifyRegisterOtp() {
+  const otp = document.getElementById('reg-otp-input').value.trim();
+  if (!otp || otp.length !== 6) return toast('Enter 6-digit OTP', 'error');
+  const mobile = _pendingRegisterPayload?.mobile?.replace(/\D/g,'');
+  try {
+    const r = await fetch(`${API}/auth/verify-otp`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ mobile, otp })
+    });
+    const d = await r.json();
+    if (!r.ok) return toast(d.detail || 'Invalid OTP', 'error');
+    document.getElementById('register-otp-form').style.display = 'none';
+    document.getElementById('register-form').style.display = 'block';
+    await onAuth(d);
+  } catch(e) { toast('Server error', 'error'); }
+}
+
+
+async function onAuth(data) {
+  token = data.access_token;
+  currentUser = data.user;
+  // Save session
+  localStorage.setItem('chat_token', token);
+  localStorage.setItem('chat_user', JSON.stringify(currentUser));
+  // Load rooms for this user
+  rooms = restoreRooms();
+  // Restore this user's blocked rooms
+  const userBlockedKey = 'chat_blocked_' + currentUser.username;
+  const savedBlocked = localStorage.getItem(userBlockedKey);
+  blockedRooms = new Set(savedBlocked ? JSON.parse(savedBlocked) : []);
+  await applyAuthUI(true);
+  toast('Welcome, ' + currentUser.username + '!', 'success');
+}
+function _renderProfileFields() {
+  if (!currentUser) return;
+  const initial = currentUser.username[0].toUpperCase();
+  document.getElementById('username-display').textContent = '@' + currentUser.username;
+  document.getElementById('header-avatar').textContent = initial;
+  document.getElementById('dropdown-avatar').textContent = initial;
+  document.getElementById('dropdown-username').textContent = currentUser.username;
+  document.getElementById('dropdown-email').textContent = currentUser.email;
+  document.getElementById('info-username').textContent = currentUser.username;
+  document.getElementById('info-email').textContent = currentUser.email;
+  // info-id is always set from login response
+  document.getElementById('info-id').textContent = (currentUser.id != null) ? '#' + currentUser.id : '—';
+  // Mobile shown in info-phone field
+  document.getElementById('info-phone').textContent = currentUser.mobile || 'Not set';
+  // Show admin button if admin
+  const adminBtn = document.getElementById('admin-panel-btn');
+  if (adminBtn) adminBtn.style.display = currentUser.is_admin ? 'inline-block' : 'none';
+  // Robust date parsing
+  let joinedDate = null;
+  try {
+    const rawDate = currentUser.created_at;
+    if (rawDate) {
+      joinedDate = new Date(String(rawDate).replace(' ', 'T'));
+      if (isNaN(joinedDate.getTime())) joinedDate = null;
+    }
+  } catch(e) { joinedDate = null; }
+  document.getElementById('info-created').textContent = joinedDate
+    ? joinedDate.toLocaleDateString('en-US', {year:'numeric', month:'short', day:'numeric'})
+    : '—';
+  document.getElementById('stat-joined').textContent = joinedDate
+    ? joinedDate.toLocaleDateString('en-US', {month:'short', year:'2-digit'})
+    : '—';
+}
+
+async function applyAuthUI(autoJoin = false) {
+  if (!currentUser) return;
+  // Load rooms and blocked for this user
+  rooms = restoreRooms();
+  const userBlockedKey = 'chat_blocked_' + currentUser.username;
+  const savedBlocked = localStorage.getItem(userBlockedKey);
+  if (savedBlocked) blockedRooms = new Set(JSON.parse(savedBlocked));
+
+  document.getElementById('auth-gate').style.display = 'none';
+
+  // Show profile immediately from cached/login data (id is always in login response)
+  _renderProfileFields();
+
+  // Also fetch fresh data in background to update created_at etc.
+  fetch(`${API}/auth/me?token=${encodeURIComponent(token)}`)
+    .then(r => r.ok ? r.json() : null)
+    .then(freshUser => {
+      if (freshUser) {
+        currentUser = { ...currentUser, ...freshUser };
+        localStorage.setItem('chat_user', JSON.stringify(currentUser));
+        _renderProfileFields(); // re-render with fresh data
+      }
+    })
+    .catch(e => console.warn('/auth/me failed:', e.message));
+
+  renderRooms();
+  loadPrivateRooms();
+  loadDMs();
+  updateProfileStats();
+
+  // Auto-join room: on refresh restore last room, on fresh login join first room
+  if (autoJoin) {
+    const lastRoom = localStorage.getItem('chat_last_room');
+    const target = (lastRoom && rooms.includes(lastRoom)) ? lastRoom : rooms[0];
+    if (target) setTimeout(() => joinRoom(target), 100);
+  }
+}
+
+function toggleProfile() {
+  const btn = document.getElementById('profile-btn');
+  const dd = document.getElementById('profile-dropdown');
+  const isOpen = dd.classList.contains('open');
+  if (isOpen) {
+    dd.classList.remove('open');
+    btn.classList.remove('open');
+  } else {
+    updateProfileStats();
+    dd.classList.add('open');
+    btn.classList.add('open');
+  }
+}
+
+function updateProfileStats() {
+  // Count messages sent by current user across all rooms
+  let msgCount = 0;
+  let roomsUsed = new Set();
+  Object.entries(messageStore).forEach(([roomId, msgs]) => {
+    msgs.forEach(m => {
+      if (m.sender_id === currentUser?.id) { msgCount++; roomsUsed.add(roomId); }
+    });
+  });
+  document.getElementById('stat-messages').textContent = msgCount;
+  document.getElementById('stat-rooms').textContent = rooms.length;
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', (e) => {
+  const btn = document.getElementById('profile-btn');
+  const dd = document.getElementById('profile-dropdown');
+  if (btn && dd && !btn.contains(e.target) && !dd.contains(e.target)) {
+    dd.classList.remove('open');
+    btn.classList.remove('open');
+  }
+});
+
+// ── DM & Private Rooms ───────────────────────────────────────────────────────
+
+let privateRooms = []; // { room_id, name, invite_code, members }
+let dmConversations = []; // { room_id, with_user }
+
+async function loadPrivateRooms() {
+  if (!token) return;
+  try {
+    const r = await fetch(`${API}/rooms/my-private-rooms?token=${encodeURIComponent(token)}`);
+    if (r.ok) {
+      privateRooms = await r.json();
+      renderPrivateRooms();
+    }
+  } catch(e) {}
+}
+
+async function loadDMs() {
+  if (!token) return;
+  try {
+    const r = await fetch(`${API}/rooms/my-dms?token=${encodeURIComponent(token)}`);
+    if (r.ok) {
+      dmConversations = await r.json();
+      renderDMs();
+    }
+  } catch(e) {}
+}
+
+function renderPrivateRooms() {
+  const list = document.getElementById('private-rooms-list');
+  if (!list) return;
+  if (privateRooms.length === 0) {
+    list.innerHTML = '<div style="padding:4px 12px;color:var(--muted);font-size:0.75rem">No private groups yet</div>';
+    return;
+  }
+  list.innerHTML = privateRooms.map(r => {
+    const isActive = currentRoom === r.room_id;
+    const bg = isActive ? 'rgba(124,106,247,0.18)' : 'transparent';
+    const color = isActive ? '#a78bfa' : '#c4c0d8';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:10px;cursor:pointer;font-size:0.85rem;color:${color};background:${bg};margin-bottom:2px;"
+      onclick="joinRoom('${r.room_id}')"
+      ondblclick="openRoomCtx(event,'${r.room_id}')">
+      <span style="opacity:0.6">🔒</span>
+      <span>${r.name}</span>
+      <span style="margin-left:auto;font-size:0.65rem;opacity:0.5">${r.members.length} members</span>
+    </div>`;
+  }).join('');
+}
+
+function renderDMs() {
+  const list = document.getElementById('dm-list');
+  if (!list) return;
+  if (dmConversations.length === 0) {
+    list.innerHTML = '<div style="padding:4px 12px;color:var(--muted);font-size:0.75rem">No DMs yet</div>';
+    return;
+  }
+  list.innerHTML = dmConversations.map(d => {
+    const isActive = currentRoom === d.room_id;
+    const bg = isActive ? 'rgba(124,106,247,0.18)' : 'transparent';
+    const color = isActive ? '#a78bfa' : '#c4c0d8';
+    const initial = d.with_user.username[0].toUpperCase();
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:10px;cursor:pointer;font-size:0.85rem;color:${color};background:${bg};margin-bottom:2px;"
+      onclick="joinRoom('${d.room_id}')"
+      ondblclick="openRoomCtx(event,'${d.room_id}')">
+      <div style="width:22px;height:22px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:0.65rem;color:white;flex-shrink:0">${initial}</div>
+      <span>${d.with_user.username}</span>
+    </div>`;
+  }).join('');
+}
+
+async function showNewDM() {
+  showInputModal({
+    icon: '💬',
+    title: 'New Direct Message',
+    placeholder: 'Search username...',
+    hint: 'Type a username to start a private chat',
+    onSubmit: async (query) => {
+      try {
+        const r = await fetch(`${API}/rooms/users/search?q=${encodeURIComponent(query)}&token=${encodeURIComponent(token)}`);
+        if (!r.ok) return toast('Search failed', 'error');
+        const users = await r.json();
+        if (users.length === 0) return toast('No users found', 'error');
+        if (users.length === 1) {
+          await startDM(users[0].username);
+        } else {
+          // Show user picker modal
+          showModal({
+            icon: '👥',
+            title: 'Select User',
+            body: `<div style="display:flex;flex-direction:column;gap:8px;max-height:200px;overflow-y:auto">
+              ${users.map(u => `
+                <div onclick="closeModal();startDM('${u.username}')"
+                  style="padding:10px 14px;background:rgba(124,106,247,0.1);border-radius:10px;cursor:pointer;
+                         color:#c4c0d8;text-align:left;border:1px solid rgba(124,106,247,0.15);
+                         transition:background 0.15s"
+                  onmouseover="this.style.background='rgba(124,106,247,0.25)'"
+                  onmouseout="this.style.background='rgba(124,106,247,0.1)'">
+                  <span style="font-weight:600;color:#a78bfa">@${u.username}</span>
+                </div>`).join('')}
+            </div>`,
+            buttons: [{ label: 'Cancel', secondary: true }]
+          });
+        }
+      } catch(e) { toast('Error', 'error'); }
+    }
+  });
+}
+
+async function startDM(username) {
+  try {
+    const r = await fetch(`${API}/rooms/dm/${encodeURIComponent(username)}?token=${encodeURIComponent(token)}`, { method: 'POST' });
+    const d = await r.json();
+    if (!r.ok) return toast(d.detail || 'Failed to open DM', 'error');
+    // Add to DM list if not there
+    if (!dmConversations.find(x => x.room_id === d.room_id)) {
+      dmConversations.push(d);
+      renderDMs();
+    }
+    joinRoom(d.room_id);
+  } catch(e) { toast('Error opening DM', 'error'); }
+}
+
+async function showCreatePrivateRoom() {
+  showInputModal({
+    icon: '🔒',
+    title: 'Create Private Group',
+    placeholder: 'group-name',
+    hint: 'Only invited members can join',
+    onSubmit: async (name) => {
+      try {
+        const r = await fetch(`${API}/rooms/create-private?name=${encodeURIComponent(name)}&token=${encodeURIComponent(token)}`, { method: 'POST' });
+        const d = await r.json();
+        if (!r.ok) return toast(d.detail || 'Failed to create group', 'error');
+        privateRooms.push(d);
+        renderPrivateRooms();
+        joinRoom(d.room_id);
+        showModal({
+          icon: '🎉',
+          title: 'Private Group Created!',
+          body: `
+            <div style="margin-bottom:12px;color:#c4c0d8">Group <b style="color:#a78bfa">${d.name}</b> is ready!</div>
+            <div style="background:rgba(124,106,247,0.1);border:1px solid rgba(124,106,247,0.2);border-radius:12px;padding:16px;margin-bottom:12px;">
+              <div style="font-size:0.7rem;color:#7c6af7;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🔑 Invite Code</div>
+              <div style="font-size:1.8rem;font-weight:800;letter-spacing:8px;color:#e2dff0;font-family:monospace">${d.invite_code}</div>
+            </div>
+            <div style="font-size:0.78rem;color:#6b6882">Share this code with friends to invite them</div>
+          `,
+          buttons: [
+            { label: '📋 Copy Code', secondary: true, onClick: () => { navigator.clipboard?.writeText(d.invite_code); toast('Copied!', 'success'); } },
+            { label: 'Start Chatting 🚀', onClick: () => {} }
+          ]
+        });
+      } catch(e) { toast('Error creating room', 'error'); }
+    }
+  });
+}
+
+async function showJoinPrivateRoom() {
+  showInputModal({
+    icon: '🔑',
+    title: 'Join Private Group',
+    placeholder: 'XXXXXXXX',
+    hint: 'Enter the 8-character invite code',
+    onSubmit: async (code) => {
+      try {
+        const r = await fetch(`${API}/rooms/join-private?invite_code=${encodeURIComponent(code.toUpperCase())}&token=${encodeURIComponent(token)}`, { method: 'POST' });
+        const d = await r.json();
+        if (!r.ok) return toast(d.detail || 'Invalid invite code', 'error');
+        if (!privateRooms.find(x => x.room_id === d.room_id)) {
+          privateRooms.push(d);
+          renderPrivateRooms();
+        }
+        joinRoom(d.room_id);
+        showModal({
+          icon: '✅',
+          title: 'Joined Room!',
+          body: `<div style="color:#c4c0d8">You joined <b style="color:#a78bfa">${d.name}</b>!<br>
+            <span style="font-size:0.82rem;color:#6b6882">${d.members.length} members in this room</span></div>`,
+          buttons: [{ label: 'Start Chatting 🚀', onClick: () => {} }]
+        });
+      } catch(e) { toast('Error joining group', 'error'); }
+    }
+  });
+}
+
+async function updateMobile() {
+  showInputModal({
+    icon: '📱',
+    title: 'Update Mobile Number',
+    placeholder: '9876543210',
+    defaultValue: currentUser.mobile || '',
+    hint: 'Enter digits only — you can login with this number',
+    onSubmit: async (num) => {
+      const clean = num.replace(/\D/g, '');
+      if (!clean || clean.length < 7) return toast('Invalid mobile number', 'error');
+      try {
+        const r = await fetch(`${API}/auth/update-mobile?token=${encodeURIComponent(token)}&mobile=${encodeURIComponent(clean)}`, { method: 'POST' });
+        const data = await r.json();
+        if (r.ok) {
+          currentUser.mobile = data.mobile;
+          localStorage.setItem('chat_user', JSON.stringify(currentUser));
+          document.getElementById('info-phone').textContent = data.mobile;
+          toast('Mobile updated!', 'success');
+        } else {
+          toast(data.detail || 'Failed to update mobile', 'error');
+        }
+      } catch(e) { toast('Error updating mobile', 'error'); }
+    }
+  });
+}
+
+// ── Mobile Sidebar Toggle ─────────────────────────────────────────────────────
+
+function toggleMobileSidebar() {
+  const sidebar = document.querySelector('.sidebar');
+  sidebar.classList.toggle('hidden');
+}
+
+function showMobileSidebar() {
+  const sidebar = document.querySelector('.sidebar');
+  sidebar.classList.remove('hidden');
+}
+
+function hideMobileSidebar() {
+  if (window.innerWidth <= 768) {
+    const sidebar = document.querySelector('.sidebar');
+    sidebar.classList.add('hidden');
+  }
+}
+
+// ── Room Info Panel (WhatsApp style) ─────────────────────────────────────────
+
+function toggleRoomInfoPanel() {
+  const panel = document.getElementById('room-info-panel');
+  const isOpen = panel.style.display === 'flex';
+  if (isOpen) {
+    panel.style.display = 'none';
+    return;
+  }
+  panel.style.display = 'flex';
+  panel.style.flexDirection = 'column';
+  buildRoomInfoPanel();
+}
+
+function buildRoomInfoPanel() {
+  if (!currentRoom) return;
+  const isDM = currentRoom.startsWith('dm_');
+  const isPrivate = currentRoom.startsWith('private_');
+
+  const avatar = document.getElementById('rip-avatar');
+  const name = document.getElementById('rip-name');
+  const sub = document.getElementById('rip-sub');
+  const rows = document.getElementById('rip-rows');
+  const membersSection = document.getElementById('rip-members');
+  const membersList = document.getElementById('rip-members-list');
+  const actions = document.getElementById('rip-actions');
+
+  if (isDM) {
+    const dm = dmConversations.find(d => d.room_id === currentRoom);
+    const username = dm ? dm.with_user.username : 'User';
+    const initial = username[0].toUpperCase();
+    avatar.textContent = initial;
+    avatar.style.background = '#7c6af7';
+    avatar.style.fontSize = '1.8rem';
+    name.textContent = '@' + username;
+    sub.textContent = 'Direct Message';
+    rows.innerHTML = `
+      <div style="padding:10px 18px;display:flex;align-items:center;gap:14px;border-bottom:1px solid rgba(255,255,255,0.04)">
+        <span style="font-size:1.1rem">💬</span>
+        <div><div style="font-size:0.7rem;color:var(--muted);margin-bottom:2px">Chat Type</div><div style="color:var(--text);font-size:0.85rem">Private Direct Message</div></div>
+      </div>
+    `;
+    membersSection.style.display = 'none';
+    actions.innerHTML = `
+      <button onclick="toggleRoomInfoPanel()" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);color:#fc8181;border-radius:10px;padding:10px;cursor:pointer;font-size:0.82rem;text-align:left">🚪 Exit DM</button>
+    `;
+  } else if (isPrivate) {
+    const pr = privateRooms.find(p => p.room_id === currentRoom);
+    avatar.textContent = '🔒';
+    avatar.style.background = 'linear-gradient(135deg,#553c9a,#7c6af7)';
+    avatar.style.fontSize = '1.8rem';
+    name.textContent = pr ? pr.name : 'Private Room';
+    sub.textContent = `${pr ? pr.members.length : '?'} members`;
+    rows.innerHTML = `
+      <div style="padding:10px 18px;display:flex;align-items:center;gap:14px;border-bottom:1px solid rgba(255,255,255,0.04)">
+        <span style="font-size:1.1rem">🔑</span>
+        <div>
+          <div style="font-size:0.7rem;color:var(--muted);margin-bottom:2px">Invite Code</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="color:var(--text);font-size:0.95rem;font-family:monospace;letter-spacing:3px;font-weight:700">${pr?.invite_code || '——'}</span>
+            <button onclick="navigator.clipboard?.writeText('${pr?.invite_code}');toast('Copied!','success')" style="background:rgba(124,106,247,0.15);border:1px solid rgba(124,106,247,0.2);color:#a78bfa;border-radius:6px;padding:2px 8px;font-size:0.7rem;cursor:pointer">Copy</button>
+          </div>
+        </div>
+      </div>
+      <div style="padding:10px 18px;display:flex;align-items:center;gap:14px">
+        <span style="font-size:1.1rem">📅</span>
+        <div><div style="font-size:0.7rem;color:var(--muted);margin-bottom:2px">Room Type</div><div style="color:var(--text);font-size:0.85rem">Private — Invite Only</div></div>
+      </div>
+    `;
+    // Members
+    if (pr && pr.members.length) {
+      membersSection.style.display = 'block';
+      membersList.innerHTML = pr.members.map(m => {
+        const init = m[0].toUpperCase();
+        return `<div style="display:flex;align-items:center;gap:10px;padding:8px 18px;cursor:pointer" onclick="showUserInfo(0,'${m}')">
+          <div style="width:34px;height:34px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;color:white;font-size:0.85rem">${init}</div>
+          <span style="color:var(--text);font-size:0.85rem">@${m}</span>
+          ${m === currentUser?.username ? '<span style="margin-left:auto;font-size:0.7rem;color:var(--muted)">you</span>' : ''}
+        </div>`;
+      }).join('');
+    } else {
+      membersSection.style.display = 'none';
+    }
+    actions.innerHTML = `
+      <button onclick="ctxTargetRoom=currentRoom;ctxExitPrivateRoom();toggleRoomInfoPanel()" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);color:#fc8181;border-radius:10px;padding:10px;cursor:pointer;font-size:0.82rem;text-align:left">🚪 Exit Room</button>
+    `;
+  } else {
+    // Public room
+    avatar.textContent = currentRoom[0].toUpperCase();
+    avatar.style.background = '#7c6af7';
+    avatar.style.fontSize = '1.8rem';
+    name.textContent = '# ' + currentRoom;
+    sub.textContent = 'Public Room';
+    const onlineUsers = manager?.get_online_users?.(currentRoom) || [];
+    rows.innerHTML = `
+      <div style="padding:10px 18px;display:flex;align-items:center;gap:14px;border-bottom:1px solid rgba(255,255,255,0.04)">
+        <span style="font-size:1.1rem">🌐</span>
+        <div><div style="font-size:0.7rem;color:var(--muted);margin-bottom:2px">Room Type</div><div style="color:var(--text);font-size:0.85rem">Public — Anyone can join</div></div>
+      </div>
+      <div style="padding:10px 18px;display:flex;align-items:center;gap:14px">
+        <span style="font-size:1.1rem">🔗</span>
+        <div><div style="font-size:0.7rem;color:var(--muted);margin-bottom:2px">Room ID</div><div style="color:var(--text);font-size:0.85rem;font-family:monospace">${currentRoom}</div></div>
+      </div>
+    `;
+    membersSection.style.display = 'none';
+    actions.innerHTML = `
+      <button onclick="ctxTargetRoom=currentRoom;ctxDeleteRoom();toggleRoomInfoPanel()" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);color:#fc8181;border-radius:10px;padding:10px;cursor:pointer;font-size:0.82rem;text-align:left">❌ Delete Room</button>
+    `;
+  }
+}
+
+// ── User Info Popup ───────────────────────────────────────────────────────────
+
+let uipTimeout = null;
+
+async function showUserInfo(userId, username) {
+  const popup = document.getElementById('user-info-popup');
+  // Set basic info immediately
+  const initial = (username || '?')[0].toUpperCase();
+  document.getElementById('uip-avatar').textContent = initial;
+  document.getElementById('uip-username').textContent = '@' + username;
+  document.getElementById('uip-email').textContent = '📧 Loading...';
+  document.getElementById('uip-mobile').textContent = '';
+  document.getElementById('uip-admin-badge').style.display = 'none';
+
+  // Actions
+  const actionsDiv = document.getElementById('uip-actions');
+  const isMe = userId === currentUser?.id;
+  actionsDiv.innerHTML = !isMe ? `
+    <button onclick="startDM('${username}');closeUserInfoPopup()" style="background:rgba(124,106,247,0.15);border:1px solid rgba(124,106,247,0.3);color:#a78bfa;border-radius:8px;padding:5px 12px;font-size:0.78rem;cursor:pointer">💬 DM</button>
+    ${currentUser?.is_admin ? `<button onclick="closeUserInfoPopup();setTimeout(()=>adminDelete(${userId},'${username}'),100)" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);color:#fc8181;border-radius:8px;padding:5px 12px;font-size:0.78rem;cursor:pointer">🗑 Delete</button>` : ''}
+  ` : `<span style="color:#6b6882;font-size:0.75rem">This is you</span>`;
+
+  // Position popup — center of screen
+  popup.style.display = 'block';
+  popup.style.left = '50%';
+  popup.style.top = '50%';
+  popup.style.transform = 'translate(-50%,-50%)';
+  popup.style.position = 'fixed';
+
+  // Close on outside click
+  clearTimeout(uipTimeout);
+  uipTimeout = setTimeout(() => {
+    document.addEventListener('click', closeUserInfoOnOutsideClick, { once: true });
+  }, 100);
+
+  // Fetch full user info from search API
+  try {
+    const r = await fetch(`${API}/rooms/users/search?q=${encodeURIComponent(username)}&token=${encodeURIComponent(token)}`);
+    if (r.ok) {
+      const users = await r.json();
+      const user = users.find(u => u.id === userId || u.username === username);
+      if (user) {
+        document.getElementById('uip-email').textContent = user.email ? '📧 ' + user.email : '📧 Hidden';
+        document.getElementById('uip-mobile').textContent = user.mobile ? '📱 ' + user.mobile : '';
+        if (user.is_admin) document.getElementById('uip-admin-badge').style.display = 'inline';
+      } else {
+        document.getElementById('uip-email').textContent = isMe ? '📧 ' + (currentUser.email || '') : '📧 —';
+        document.getElementById('uip-mobile').textContent = isMe && currentUser.mobile ? '📱 ' + currentUser.mobile : '';
+      }
+    }
+  } catch(e) {
+    document.getElementById('uip-email').textContent = isMe ? '📧 ' + (currentUser.email || '') : '📧 —';
+  }
+}
+
+function closeUserInfoPopup() {
+  document.getElementById('user-info-popup').style.display = 'none';
+}
+
+function closeUserInfoOnOutsideClick(e) {
+  const popup = document.getElementById('user-info-popup');
+  if (popup && !popup.contains(e.target)) {
+    popup.style.display = 'none';
+  }
+}
+
+// ── Admin Panel ───────────────────────────────────────────────────────────────
+
+let adminUsers = [];
+
+function toggleAdminPanel() {
+  const panel = document.getElementById('admin-panel');
+  const isOpen = panel.style.display === 'flex';
+  if (isOpen) {
+    panel.style.display = 'none';
+  } else {
+    panel.style.display = 'flex';
+    loadAdminStats();
+    loadAdminUsers();
+  }
+}
+
+async function loadAdminStats() {
+  try {
+    const r = await fetch(`${API}/admin/stats?token=${encodeURIComponent(token)}`);
+    if (!r.ok) return;
+    const s = await r.json();
+    document.getElementById('admin-stats').innerHTML = [
+      { label: 'Total Users', value: s.total_users, color: '#a78bfa', icon: '👥' },
+      { label: 'Active', value: s.active_users, color: '#68d391', icon: '✅' },
+      { label: 'Banned', value: s.banned_users, color: '#fc8181', icon: '🚫' },
+      { label: 'Messages Today', value: s.messages_today, color: '#63b3ed', icon: '💬' },
+    ].map(stat => `
+      <div style="padding:20px 24px;background:#0f0e18;text-align:center">
+        <div style="font-size:1.6rem;margin-bottom:4px">${stat.icon}</div>
+        <div style="font-size:1.5rem;font-weight:800;color:${stat.color}">${stat.value}</div>
+        <div style="font-size:0.72rem;color:#6b6882;margin-top:2px">${stat.label}</div>
+      </div>
+    `).join('');
+  } catch(e) {}
+}
+
+async function loadAdminUsers(search = '') {
+  try {
+    const url = `${API}/admin/users?token=${encodeURIComponent(token)}${search ? '&search=' + encodeURIComponent(search) : ''}`;
+    const r = await fetch(url);
+    if (!r.ok) return;
+    adminUsers = await r.json();
+    renderAdminUsers(adminUsers);
+  } catch(e) {
+    document.getElementById('admin-users-body').innerHTML = '<tr><td colspan="6" style="text-align:center;padding:32px;color:#fc8181">Failed to load users</td></tr>';
+  }
+}
+
+function adminSearch(q) {
+  clearTimeout(adminSearch._t);
+  adminSearch._t = setTimeout(() => loadAdminUsers(q), 300);
+}
+
+function renderAdminUsers(users) {
+  const tbody = document.getElementById('admin-users-body');
+  if (!users.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:32px;color:#6b6882">No users found</td></tr>';
+    return;
+  }
+  tbody.innerHTML = users.map(u => {
+    const isMe = u.username === currentUser?.username;
+    const joined = u.created_at ? new Date(u.created_at).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'2-digit'}) : '—';
+    const statusBadge = u.is_active
+      ? '<span style="background:rgba(104,211,145,0.15);color:#68d391;border-radius:999px;padding:2px 10px;font-size:0.72rem">Active</span>'
+      : '<span style="background:rgba(252,129,129,0.15);color:#fc8181;border-radius:999px;padding:2px 10px;font-size:0.72rem">Banned</span>';
+    const adminBadge = u.is_admin ? '<span style="background:rgba(239,68,68,0.15);color:#fc8181;border-radius:999px;padding:2px 8px;font-size:0.65rem;margin-left:4px">ADMIN</span>' : '';
+    const initial = u.username[0].toUpperCase();
+
+    return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);transition:background 0.15s" onmouseover="this.style.background='rgba(124,106,247,0.05)'" onmouseout="this.style.background='transparent'">
+      <td style="padding:12px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;color:white;font-size:0.85rem;flex-shrink:0">${initial}</div>
+          <div>
+            <div style="color:#e2dff0;font-weight:600;font-size:0.88rem">@${u.username}${adminBadge}</div>
+            <div style="color:#6b6882;font-size:0.72rem">#${u.id}</div>
+          </div>
+        </div>
+      </td>
+      <td style="padding:12px;color:#a09cb8;font-size:0.82rem">${u.email}</td>
+      <td style="padding:12px;text-align:center;color:#c4c0d8;font-size:0.88rem">${u.message_count}</td>
+      <td style="padding:12px;text-align:center">${statusBadge}</td>
+      <td style="padding:12px;text-align:center;color:#6b6882;font-size:0.78rem">${joined}</td>
+      <td style="padding:12px;text-align:center">
+        ${isMe ? '<span style="color:#6b6882;font-size:0.75rem">You</span>' : `
+          <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap">
+            ${u.is_active
+              ? `<button onclick="adminBan(${u.id},'${u.username}')" style="background:rgba(252,129,129,0.1);border:1px solid rgba(252,129,129,0.25);color:#fc8181;border-radius:7px;padding:4px 10px;font-size:0.75rem;cursor:pointer">🚫 Ban</button>`
+              : `<button onclick="adminUnban(${u.id},'${u.username}')" style="background:rgba(104,211,145,0.1);border:1px solid rgba(104,211,145,0.25);color:#68d391;border-radius:7px;padding:4px 10px;font-size:0.75rem;cursor:pointer">✅ Unban</button>`
+            }
+            ${!u.is_admin
+              ? `<button onclick="adminMakeAdmin(${u.id},'${u.username}')" style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:#fc8181;border-radius:7px;padding:4px 10px;font-size:0.75rem;cursor:pointer">⚙️ Admin</button>`
+              : `<button onclick="adminRemoveAdmin(${u.id},'${u.username}')" style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:#fc8181;border-radius:7px;padding:4px 10px;font-size:0.75rem;cursor:pointer">↩ Unadmin</button>`
+            }
+            <button onclick="adminDelete(${u.id},'${u.username}')" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#fc8181;border-radius:7px;padding:4px 10px;font-size:0.75rem;cursor:pointer">🗑 Delete</button>
+          </div>
+        `}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function adminBan(userId, username) {
+  showConfirm('🚫', 'Ban User', `Ban <b style="color:#e2dff0">@${username}</b>?<br><span style="font-size:0.8rem">They won't be able to login.</span>`, async () => {
+    const r = await fetch(`${API}/admin/users/${userId}/ban?token=${encodeURIComponent(token)}`, { method: 'POST' });
+    const d = await r.json();
+    if (r.ok) { toast(d.message, 'success'); loadAdminUsers(); loadAdminStats(); }
+    else toast(d.detail, 'error');
+  });
+}
+
+async function adminUnban(userId, username) {
+  const r = await fetch(`${API}/admin/users/${userId}/unban?token=${encodeURIComponent(token)}`, { method: 'POST' });
+  const d = await r.json();
+  if (r.ok) { toast(d.message, 'success'); loadAdminUsers(); loadAdminStats(); }
+  else toast(d.detail, 'error');
+}
+
+async function adminDelete(userId, username) {
+  showConfirm('🗑️', 'Delete Account', `Permanently delete <b style="color:#e2dff0">@${username}</b>?<br><span style="font-size:0.8rem;color:#fc8181">This cannot be undone. All messages will be deleted.</span>`, async () => {
+    const r = await fetch(`${API}/admin/users/${userId}?token=${encodeURIComponent(token)}`, { method: 'DELETE' });
+    const d = await r.json();
+    if (r.ok) { toast(d.message, 'success'); loadAdminUsers(); loadAdminStats(); }
+    else toast(d.detail, 'error');
+  });
+}
+
+async function adminMakeAdmin(userId, username) {
+  showConfirm('⚙️', 'Make Admin', `Give admin access to <b style="color:#e2dff0">@${username}</b>?`, async () => {
+    const r = await fetch(`${API}/admin/users/${userId}/make-admin?token=${encodeURIComponent(token)}`, { method: 'POST' });
+    const d = await r.json();
+    if (r.ok) { toast(d.message, 'success'); loadAdminUsers(); }
+    else toast(d.detail, 'error');
+  });
+}
+
+async function adminRemoveAdmin(userId, username) {
+  showConfirm('↩', 'Remove Admin', `Remove admin from <b style="color:#e2dff0">@${username}</b>?`, async () => {
+    const r = await fetch(`${API}/admin/users/${userId}/remove-admin?token=${encodeURIComponent(token)}`, { method: 'POST' });
+    const d = await r.json();
+    if (r.ok) { toast(d.message, 'success'); loadAdminUsers(); }
+    else toast(d.detail, 'error');
+  });
+}
+
+function showCreateTestUser() {
+  // Build a custom multi-field modal
+  showModal({
+    icon: '🧪',
+    title: 'Create Test User',
+    body: `
+      <div style="text-align:left;display:flex;flex-direction:column;gap:10px">
+        <div>
+          <div style="font-size:0.72rem;color:#7c6af7;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">Username *</div>
+          <input id="tu-username" type="text" placeholder="testuser" maxlength="30"
+            style="width:100%;background:#0f0e18;border:1px solid rgba(124,106,247,0.3);border-radius:10px;padding:10px 14px;font-size:0.88rem;color:#e2dff0;outline:none;box-sizing:border-box"
+            onfocus="this.style.borderColor='#7c6af7'" onblur="this.style.borderColor='rgba(124,106,247,0.3)'" />
+        </div>
+        <div>
+          <div style="font-size:0.72rem;color:#7c6af7;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">Password</div>
+          <input id="tu-password" type="text" placeholder="test1234" value="test1234" maxlength="30"
+            style="width:100%;background:#0f0e18;border:1px solid rgba(124,106,247,0.3);border-radius:10px;padding:10px 14px;font-size:0.88rem;color:#e2dff0;outline:none;box-sizing:border-box;font-family:monospace"
+            onfocus="this.style.borderColor='#7c6af7'" onblur="this.style.borderColor='rgba(124,106,247,0.3)'" />
+        </div>
+        <div>
+          <div style="font-size:0.72rem;color:#6b6882;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">Email (optional — auto-generated if empty)</div>
+          <input id="tu-email" type="text" placeholder="auto: username@test.nexchat.local"
+            style="width:100%;background:#0f0e18;border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 14px;font-size:0.85rem;color:#a09cb8;outline:none;box-sizing:border-box"
+            onfocus="this.style.borderColor='#7c6af7'" onblur="this.style.borderColor='rgba(255,255,255,0.08)'" />
+        </div>
+        <div style="background:rgba(104,211,145,0.08);border:1px solid rgba(104,211,145,0.15);border-radius:10px;padding:10px 12px;font-size:0.78rem;color:#68d391">
+          ✅ No mobile number or OTP needed — admin privilege
+        </div>
+      </div>
+    `,
+    buttons: [
+      { label: 'Cancel', secondary: true },
+      { label: '➕ Create User', onClick: doCreateTestUser }
+    ]
+  });
+  setTimeout(() => document.getElementById('tu-username')?.focus(), 60);
+}
+
+async function doCreateTestUser() {
+  const username = document.getElementById('tu-username')?.value?.trim();
+  const password = document.getElementById('tu-password')?.value?.trim() || 'test1234';
+  const email = document.getElementById('tu-email')?.value?.trim() || '';
+
+  if (!username) return showCreateTestUser(); // reopen if empty
+
+  try {
+    const params = new URLSearchParams({ username, password, token });
+    if (email) params.set('email', email);
+    const r = await fetch(`${API}/admin/create-test-user?${params.toString()}`, { method: 'POST' });
+    const d = await r.json();
+    if (!r.ok) {
+      toast(d.detail || 'Failed to create user', 'error');
+      return;
+    }
+    // Show success with credentials
+    showModal({
+      icon: '✅',
+      title: 'Test User Created!',
+      body: `
+        <div style="text-align:left;display:flex;flex-direction:column;gap:10px">
+          <div style="background:rgba(104,211,145,0.08);border:1px solid rgba(104,211,145,0.2);border-radius:12px;padding:14px">
+            <div style="margin-bottom:8px">
+              <span style="color:#6b6882;font-size:0.75rem">Username</span><br>
+              <span style="color:#e2dff0;font-weight:700;font-size:1rem">@${d.user.username}</span>
+            </div>
+            <div style="margin-bottom:8px">
+              <span style="color:#6b6882;font-size:0.75rem">Password</span><br>
+              <span style="color:#68d391;font-family:monospace;font-size:0.95rem;font-weight:700">${d.user.password_plain}</span>
+            </div>
+            <div>
+              <span style="color:#6b6882;font-size:0.75rem">Email</span><br>
+              <span style="color:#a09cb8;font-size:0.82rem">${d.user.email}</span>
+            </div>
+          </div>
+          <div style="font-size:0.78rem;color:#6b6882;text-align:center">Login with username + password (no OTP)</div>
+        </div>
+      `,
+      buttons: [
+        { label: '📋 Copy Password', secondary: true, onClick: () => { navigator.clipboard?.writeText(d.user.password_plain); toast('Copied!', 'success'); } },
+        { label: 'Done', onClick: () => { loadAdminUsers(); loadAdminStats(); } }
+      ]
+    });
+  } catch(e) {
+    toast('Error creating user', 'error');
+  }
+}
+
+function logout() {
+  if (ws) { ws.close(); ws = null; }
+  // Only clear session — keep per-user rooms/blocked in localStorage
+  localStorage.removeItem('chat_token');
+  localStorage.removeItem('chat_user');
+  localStorage.removeItem('chat_last_room');
+  // Reset runtime state
+  token = null; currentUser = null; currentRoom = null;
+  messageStore = {};
+  blockedRooms = new Set();
+  rooms = DEFAULTS.slice();
+  document.getElementById('auth-gate').style.display = 'flex';
+  document.getElementById('chat-main').style.display = 'none';
+  document.getElementById('empty-state').style.display = 'flex';
+  document.getElementById('status-dot').classList.remove('connected');
+  document.getElementById('profile-dropdown').classList.remove('open');
+  document.getElementById('profile-btn').classList.remove('open');
+  document.getElementById('header-avatar').textContent = '?';
+  document.getElementById('username-display').textContent = '';
+  document.getElementById('rooms-list').innerHTML = '';
+  document.getElementById('online-list').innerHTML = '';
+  document.getElementById('messages').innerHTML = '';
+}
+
+// ── Rooms ───────────────────────────────────────────────────────────────────
+
+function renderRooms() {
+  const list = document.getElementById('rooms-list');
+  if (!list) return;
+  list.innerHTML = rooms.map(r => {
+    const isBlocked = blockedRooms.has(r);
+    const isActive = r === currentRoom;
+    const bgColor = isActive ? 'rgba(124,106,247,0.18)' : 'transparent';
+    const textColor = isActive ? '#a78bfa' : '#c4c0d8';
+    const border = isActive ? '1px solid rgba(124,106,247,0.2)' : '1px solid transparent';
+    return `<div class="room-item ${isActive?'active':''} ${isBlocked?'blocked-room':''}"
+      style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;cursor:pointer;font-size:0.88rem;color:${textColor};background:${bgColor};border:${border};margin-bottom:2px;"
+      onclick="joinRoom('${r}')"
+      ondblclick="openRoomCtx(event,'${r}')">
+      <span style="font-family:monospace;opacity:0.6;font-size:1rem">#</span>
+      <span style="color:${textColor}">${r}</span>
+      ${isBlocked ? '<span style="background:#7c6af7;color:white;border-radius:999px;padding:1px 7px;font-size:0.65rem;margin-left:auto">blocked</span>' : ''}
+    </div>`;
+  }).join('');
+}
+
+function addRoom() {
+  const input = document.getElementById('new-room-input');
+  if (!input) return;
+  const raw = input.value.trim();
+  if (!raw) { toast('Enter a group name', 'error'); return; }
+  const name = raw.toLowerCase().replace(/[^a-z0-9-_]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  if (!name) { toast('Invalid group name', 'error'); return; }
+  if (rooms.includes(name)) { toast('Group already exists', 'error'); return; }
+  rooms.push(name);
+  persistRooms();
+  input.value = '';
+  renderRooms();
+  joinRoom(name);
+  toast('Group   #' + name + ' created!', 'success');
+}
+
+function joinRoom(roomId) {
+  if (currentRoom === roomId && ws && ws.readyState === 1) return;
+  // Always close old WS and clear messages when switching rooms
+  if (ws) { ws.close(); ws = null; }
+  document.getElementById('status-dot').classList.remove('connected');
+  document.getElementById('messages').innerHTML = '';
+  document.getElementById('typing-bar').innerHTML = '';
+
+  currentRoom = roomId;
+  localStorage.setItem('chat_last_room', roomId);
+  renderRooms();
+  renderPrivateRooms();
+  renderDMs();
+  // Set room title based on type
+  let roomTitle = '# ' + roomId;
+  let headerAvatarText = roomId[0].toUpperCase();
+  if (roomId.startsWith('dm_')) {
+    const dm = dmConversations.find(d => d.room_id === roomId);
+    roomTitle = dm ? dm.with_user.username : 'Direct Message';
+    headerAvatarText = roomTitle[0].toUpperCase();
+  } else if (roomId.startsWith('private_')) {
+    const pr = privateRooms.find(p => p.room_id === roomId);
+    roomTitle = pr ? pr.name : 'Private Room';
+    headerAvatarText = '🔒';
+  }
+  document.getElementById('room-title').textContent = roomTitle;
+  const ha = document.getElementById('chat-header-avatar');
+  if (ha) {
+    ha.textContent = headerAvatarText;
+    ha.style.background = roomId.startsWith('dm_') ? '#7c6af7' : roomId.startsWith('private_') ? '#553c9a' : '#7c6af7';
+    ha.style.fontSize = roomId.startsWith('private_') ? '1.2rem' : '1rem';
+  }
+  // Close info panel when switching rooms
+  document.getElementById('room-info-panel').style.display = 'none';
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('chat-main').style.display = 'flex';
+
+  if (blockedRooms.has(roomId)) {
+    // Show blocked notice instead of messages
+    const container = document.getElementById('messages');
+    container.innerHTML = '<div class="blocked-msg-notice"><div class="blocked-icon">🚫</div>This room is blocked.<br><a href="#" style="color:var(--accent2)" onclick="ctxUnblockRoom(\''+roomId+'\')">Unblock to view messages</a></div>';
+    return;
+  }
+
+  if (!messageStore[roomId]) messageStore[roomId] = [];
+  connectWS(roomId);
+  hideMobileSidebar();
+}
+
+// ── WebSocket ────────────────────────────────────────────────────────────────
+
+function connectWS(roomId) {
+  if (ws) { ws.close(); ws = null; }
+  document.getElementById('status-dot').classList.remove('connected');
+
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const socket = new WebSocket(`${proto}://${location.host}/ws/${roomId}?token=${token}`);
+  ws = socket;
+
+  socket.onopen = () => {
+    if (currentRoom !== roomId) { socket.close(); return; } // stale connection guard
+    document.getElementById('status-dot').classList.add('connected');
+  };
+
+  socket.onclose = () => {
+    if (ws === socket) document.getElementById('status-dot').classList.remove('connected');
+  };
+
+  socket.onerror = () => {
+    if (currentRoom === roomId) toast('WebSocket error', 'error');
+  };
+
+  socket.onmessage = (e) => {
+    if (currentRoom !== roomId) return; // discard messages for old rooms
+    const msg = JSON.parse(e.data);
+    handleWSEvent(msg);
+  };
+}
+
+function handleWSEvent({ event, data }) {
+  switch (event) {
+    case 'history':
+      // Always use server history (includes all past messages from DB)
+      // This ensures new users see old messages too
+      messageStore[data.room_id] = data.messages || [];
+      renderMessages(data.room_id);
+      updateOnlineUsers(data.online_users || []);
+      break;
+
+    case 'message':
+      if (!messageStore[data.room_id]) messageStore[data.room_id] = [];
+      messageStore[data.room_id].push(data);
+      appendMessage(data);
+      scrollToBottom();
+      // Auto read receipt
+      ws.send(JSON.stringify({ event: 'read_receipt', data: { message_id: data.id } }));
+      break;
+
+    case 'user_joined':
+      addSystemMsg(`${data.username} joined the room`);
+      updateOnlineUsers(data.online_users || []);
+      break;
+
+    case 'user_left':
+      addSystemMsg(`${data.username} left the room`);
+      updateOnlineUsers(data.online_users || []);
+      break;
+
+    case 'typing':
+      showTyping(data.typing_users || []);
+      break;
+
+    case 'read_receipt':
+      updateReadReceipt(data.message_id, data.username);
+      break;
+
+    case 'message_deleted':
+      markMessageDeleted(data.message_id);
+      break;
+
+    case 'message_edited':
+      updateMessageContent(data);
+      break;
+
+    case 'error':
+      toast(data.detail || 'Error', 'error');
+      break;
+  }
+}
+
+// ── Sending ──────────────────────────────────────────────────────────────────
+
+function sendMessage() {
+  const input = document.getElementById('message-input');
+  const text = input.value.trim();
+  if (!text || !ws || ws.readyState !== 1) return;
+
+  if (editingMessageId) {
+    ws.send(JSON.stringify({ event: 'edit_message', data: { message_id: editingMessageId, message: text } }));
+    cancelEdit();
+  } else {
+    ws.send(JSON.stringify({ event: 'message', data: { message: text } }));
+  }
+
+  input.value = '';
+  input.style.height = '44px';
+  ws.send(JSON.stringify({ event: 'typing', data: { is_typing: false } }));
+}
+
+async function handleFileUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  toast('Uploading file...', 'success');
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const r = await fetch(`${API}/upload?token=${token}`, { method: 'POST', body: fd });
+    const d = await r.json();
+    if (!r.ok) return toast(d.detail || 'Upload failed', 'error');
+    const isImage = file.type.startsWith('image/');
+    ws.send(JSON.stringify({
+      event: 'message',
+      data: {
+        message: isImage ? `📸 ${file.name}` : `📎 ${file.name}`,
+        message_type: isImage ? 'image' : 'file',
+        file_url: d.file_url,
+        file_name: d.file_name,
+      }
+    }));
+    toast('File shared!', 'success');
+  } catch { toast('Upload failed', 'error'); }
+  e.target.value = '';
+}
+
+function insertEmoji(emoji) {
+  const input = document.getElementById('message-input');
+  input.value += emoji;
+  input.focus();
+}
+
+// ── Typing ───────────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', async () => {
+  // ── Auto-restore session on page refresh ──
+  if (token && currentUser) {
+    await applyAuthUI(true);
+    // Emergency fallback: re-render rooms after 500ms in case async timing issues
+    setTimeout(() => { if (currentUser) renderRooms(); }, 500);
+  }
+
+  const input = document.getElementById('message-input');
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); return; }
+    if (ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({ event: 'typing', data: { is_typing: true } }));
+      clearTimeout(typingTimeout);
+      typingTimeout = setTimeout(() => {
+        if (ws && ws.readyState === 1)
+          ws.send(JSON.stringify({ event: 'typing', data: { is_typing: false } }));
+      }, 2000);
+    }
+  });
+
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 140) + 'px';
+  });
+
+  document.getElementById('new-room-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') addRoom();
+  });
+  document.getElementById('login-password').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+  document.getElementById('reg-password').addEventListener('keydown', e => { if(e.key==='Enter') doRegister(); });
+});
+
+function showTyping(users) {
+  const bar = document.getElementById('typing-bar');
+  const others = users.filter(u => u !== currentUser?.username);
+  if (!others.length) { bar.innerHTML = ''; return; }
+  const names = others.join(', ');
+  bar.innerHTML = `<span style="color:var(--accent2);font-family:var(--mono)">${names}</span>&nbsp;is typing <span class="typing-dots"><span>·</span><span>·</span><span>·</span></span>`;
+}
+
+// ── Rendering ────────────────────────────────────────────────────────────────
+
+function renderMessages(roomId) {
+  const container = document.getElementById('messages');
+  container.innerHTML = '';
+  const msgs = messageStore[roomId] || [];
+  msgs.forEach(msg => appendMessage(msg, false));
+  scrollToBottom();
+}
+
+function appendMessage(msg, scroll = true) {
+  if (msg.room_id !== currentRoom) return;
+  if (blockedRooms.has('user:' + msg.sender_id)) return;
+
+  const container = document.getElementById('messages');
+  const isSelf = msg.sender_id === currentUser?.id;
+  const isFirst = shouldShowAvatar(container, msg.sender_id);
+
+  // Wrapper row: self right, other left
+  const div = document.createElement('div');
+  div.className = 'msg-row' + (isSelf ? ' self-row' : '');
+  div.dataset.id = String(msg.id);
+  div.dataset.senderId = String(msg.sender_id);
+
+  // Avatar (circular, first letter)
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar ' + (isSelf ? 'self' : 'other') + (isFirst ? ' show' : '');
+  avatar.textContent = (msg.sender_username || '?')[0].toUpperCase();
+  avatar.style.cursor = 'pointer';
+  avatar.title = '@' + msg.sender_username;
+  avatar.onclick = () => showUserInfo(msg.sender_id, msg.sender_username);
+
+  // Body column
+  const body = document.createElement('div');
+  body.style.cssText = 'display:flex;flex-direction:column;gap:2px;max-width:min(65%, 480px);min-width:0;flex:1;' + (isSelf ? 'align-items:flex-end' : 'align-items:flex-start');
+
+  // Username header — only for others, only first in group
+  if (isFirst && !isSelf) {
+    const header = document.createElement('div');
+    header.className = 'msg-header';
+    header.innerHTML = '<span class="msg-username" onclick="showUserInfo(' + msg.sender_id + ',\'' + msg.sender_username + '\')" style="cursor:pointer;color:var(--accent2);font-weight:700">' + msg.sender_username + '</span>';
+    body.appendChild(header);
+  }
+
+  // Bubble row
+  const bubbleRow = document.createElement('div');
+  bubbleRow.style.cssText = 'display:flex;align-items:flex-end;gap:6px;width:100%;' + (isSelf ? 'flex-direction:row-reverse' : '');
+
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble' + (isSelf ? ' self' : '') + (msg.is_deleted ? ' deleted' : '');
+  bubble.dataset.msgId = msg.id;
+
+  if (msg.message_type === 'image' && msg.file_url) {
+    bubble.innerHTML = '<img src="' + msg.file_url + '" onclick="window.open(\'' + msg.file_url + '\',\'_blank\')" style="max-width:220px;border-radius:12px;display:block;cursor:pointer" />';
+  } else if (msg.message_type === 'file' && msg.file_url) {
+    bubble.innerHTML = '<a class="file-bubble" href="' + msg.file_url + '" target="_blank"><span class="file-icon">\uD83D\uDCCE</span><div class="file-info"><span class="file-name">' + msg.file_name + '</span><span class="file-meta">Click to download</span></div></a>';
+  } else {
+    bubble.textContent = msg.message;
+    if (msg.is_edited) bubble.innerHTML += '<span class="msg-edited">(edited)</span>';
+  }
+
+  bubbleRow.appendChild(bubble);
+
+  // Edit/Delete for own messages
+  if (isSelf && !msg.is_deleted) {
+    const actions = document.createElement('div');
+    actions.className = 'msg-actions';
+    actions.innerHTML = '<button class="action-btn" onclick="startEdit(' + msg.id + ', \'' + msg.message.replace(/'/g, "\\'") + '\')">✏️</button><button class="action-btn" onclick="deleteMsg(' + msg.id + ')" style="color:var(--red)">🗑</button>';
+    bubbleRow.appendChild(actions);
+  }
+  body.appendChild(bubbleRow);
+
+  // Time + tick below bubble
+  const meta = document.createElement('div');
+  meta.id = 'receipts-' + msg.id;
+  meta.style.cssText = 'display:flex;align-items:center;gap:3px;margin-top:2px;padding:0 2px';
+  const timeStr = '<span style="font-size:0.67rem;color:var(--muted)">' + formatTime(msg.timestamp) + '</span>';
+  if (isSelf) {
+    const tick = (msg.read_by && msg.read_by.length > 0)
+      ? '<span class="read-tick seen" style="font-size:0.72rem">\u2713\u2713</span>'
+      : '<span class="read-tick" style="font-size:0.72rem;color:var(--muted)">\u2713</span>';
+    meta.innerHTML = timeStr + tick;
+  }
+  body.appendChild(meta);
+
+  div.appendChild(avatar);
+  div.appendChild(body);
+  container.appendChild(div);
+
+  if (scroll) scrollToBottom();
+}
+
+function shouldShowAvatar(container, senderId) {
+  const rows = container.querySelectorAll('.msg-row');
+  if (!rows.length) return true;
+  const last = rows[rows.length - 1];
+  return !last.dataset.senderId || parseInt(last.dataset.senderId) !== senderId;
+}
+
+function addSystemMsg(text) {
+  const container = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'sys-msg';
+  div.textContent = text;
+  container.appendChild(div);
+  scrollToBottom();
+}
+
+function updateOnlineUsers(users) {
+  const list = document.getElementById('online-list');
+  const count = document.getElementById('room-online-count');
+  list.innerHTML = users.map(u => `
+    <div class="online-user" onclick="${u !== currentUser?.username ? `startDM('${u}')` : ''}" 
+         style="${u !== currentUser?.username ? 'cursor:pointer;' : ''}">
+      <div class="dot"></div>
+      <span>${u}</span>
+      ${u !== currentUser?.username ? '<span style="margin-left:auto;font-size:0.65rem;opacity:0.5">DM</span>' : '<span style="margin-left:auto;font-size:0.65rem;opacity:0.4">you</span>'}
+    </div>
+  `).join('');
+  count.textContent = `${users.length} online`;
+}
+
+function updateReadReceipt(msgId, username) {
+  const el = document.getElementById(`receipts-${msgId}`);
+  if (el) el.innerHTML = `<span class="read-tick seen">✓✓ seen</span>`;
+}
+
+function markMessageDeleted(msgId) {
+  // Update messageStore so re-renders show deleted state
+  Object.values(messageStore).forEach(msgs => {
+    const m = msgs.find(x => x.id === msgId);
+    if (m) { m.is_deleted = true; m.message = '[Message deleted]'; }
+  });
+  // Find the msg-row and replace content cleanly — remove action buttons
+  const row = document.querySelector(`.msg-row[data-id="${msgId}"]`);
+  if (row) {
+    // Find the bubble inside this row
+    const bubble = row.querySelector('[data-msg-id]');
+    if (bubble) {
+      bubble.textContent = '[Message deleted]';
+      bubble.className = 'msg-bubble deleted';
+    }
+    // Remove action buttons (Edit/Del) completely
+    const actions = row.querySelector('.msg-actions');
+    if (actions) actions.remove();
+    // Remove read receipts
+    const receipts = document.getElementById('receipts-' + msgId);
+    if (receipts) receipts.innerHTML = '';
+  }
+}
+
+function updateMessageContent(msg) {
+  const bubble = document.querySelector(`.msg-bubble[data-msg-id="${msg.id}"]`);
+  if (bubble) {
+    bubble.textContent = msg.message;
+    bubble.innerHTML += `<span class="msg-edited">(edited)</span>`;
+  }
+}
+
+// ── Editing ──────────────────────────────────────────────────────────────────
+
+function startEdit(id, text) {
+  editingMessageId = id;
+  const input = document.getElementById('message-input');
+  input.value = text;
+  input.focus();
+  input.style.borderColor = 'var(--amber)';
+  input.placeholder = 'Editing message... (Enter to save, Esc to cancel)';
+
+  const onEsc = (e) => { if (e.key === 'Escape') { cancelEdit(); document.removeEventListener('keydown', onEsc); } };
+  document.addEventListener('keydown', onEsc);
+}
+
+function cancelEdit() {
+  editingMessageId = null;
+  const input = document.getElementById('message-input');
+  input.value = '';
+  input.style.borderColor = '';
+  input.placeholder = 'Message #room...';
+}
+
+function deleteMsg(id) {
+  if (ws && ws.readyState === 1)
+    ws.send(JSON.stringify({ event: 'delete_message', data: { message_id: id } }));
+}
+
+// ── Utils ────────────────────────────────────────────────────────────────────
+
+function formatTime(iso) {
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function scrollToBottom() {
+  const c = document.getElementById('messages');
+  c.scrollTop = c.scrollHeight;
+}
+
+function toast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `toast show ${type}`;
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+
+// ── Auth Helpers ──────────────────────────────────────────────────────────────
+
+// Sync username from register to login field with animation
+function syncLoginUsername(val) {
+  const loginInput = document.getElementById('login-username');
+  loginInput.value = val;
+  loginInput.classList.remove('autofilled');
+  void loginInput.offsetWidth; // trigger reflow
+  loginInput.classList.add('autofilled');
+}
+
+// Toggle password show/hide
+function togglePw(inputId, btn) {
+  const input = document.getElementById(inputId);
+  if (input.type === 'password') {
+    input.type = 'text';
+    btn.textContent = '🙈';
+  } else {
+    input.type = 'password';
+    btn.textContent = '👁';
+  }
+}
+
+// Password strength checker
+function checkPwStrength(val) {
+  const bar = document.getElementById('pw-bar');
+  const hint = document.getElementById('pw-hint');
+  if (!bar) return;
+  let score = 0;
+  if (val.length >= 6) score++;
+  if (val.length >= 10) score++;
+  if (/[A-Z]/.test(val)) score++;
+  if (/[0-9]/.test(val)) score++;
+  if (/[^a-zA-Z0-9]/.test(val)) score++;
+  const levels = [
+    { w: '0%',   bg: 'var(--border)',  label: '' },
+    { w: '25%',  bg: 'var(--red)',     label: 'Weak' },
+    { w: '50%',  bg: 'var(--amber)',   label: 'Fair' },
+    { w: '75%',  bg: '#60a5fa',        label: 'Good' },
+    { w: '100%', bg: 'var(--green)',   label: 'Strong 💪' },
+  ];
+  const l = levels[Math.min(score, 4)];
+  bar.style.width = l.w;
+  bar.style.background = l.bg;
+  hint.style.color = l.bg;
+  hint.textContent = l.label;
+}
+
+// Update country flag display
+function updateFlag() {
+  const sel = document.getElementById('country-code');
+  const opt = sel.options[sel.selectedIndex];
+  const flag = opt.getAttribute('data-flag');
+  const code = sel.value;
+  document.getElementById('phone-flag-display').childNodes[0].textContent = flag + ' ' + code + ' ';
+}
+
+// ── Room Context Menu ─────────────────────────────────────────────────────────
+
+function openRoomCtx(e, roomId) {
+  e.preventDefault();
+  e.stopPropagation();
+  ctxTargetRoom = roomId;
+  const menu = document.getElementById('room-ctx-menu');
+  const isPrivate = roomId.startsWith('private_');
+  const isDM = roomId.startsWith('dm_');
+
+  // Set label
+  if (isPrivate) {
+    const pr = privateRooms.find(p => p.room_id === roomId);
+    document.getElementById('ctx-room-label').textContent = '🔒 ' + (pr ? pr.name : roomId);
+  } else if (isDM) {
+    const dm = dmConversations.find(d => d.room_id === roomId);
+    document.getElementById('ctx-room-label').textContent = '💬 ' + (dm ? dm.with_user.username : 'DM');
+  } else {
+    document.getElementById('ctx-room-label').textContent = '# ' + roomId;
+  }
+
+  // Show/hide items based on room type
+  document.getElementById('ctx-invite-code-item').style.display = isPrivate ? 'flex' : 'none';
+  document.getElementById('ctx-exit-room-item').style.display = (isPrivate || isDM) ? 'flex' : 'none';
+  document.getElementById('ctx-clear-item').style.display = 'flex';
+  document.getElementById('ctx-block-item').style.display = (!isPrivate && !isDM) ? 'flex' : 'none';
+  document.getElementById('ctx-delete-item').style.display = (!isPrivate && !isDM) ? 'flex' : 'none';
+
+  // Position near cursor
+  const x = Math.min(e.clientX, window.innerWidth - 200);
+  const y = Math.min(e.clientY, window.innerHeight - 220);
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+  menu.classList.add('show');
+}
+
+function closeRoomCtx() {
+  document.getElementById('room-ctx-menu').classList.remove('show');
+  ctxTargetRoom = null;
+}
+
+// ── Custom Modal ─────────────────────────────────────────────────────────────
+
+function showModal({ icon = '', title = '', body = '', buttons = [] }) {
+  document.getElementById('modal-icon').textContent = icon;
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').innerHTML = body;
+  const btns = document.getElementById('modal-buttons');
+  btns.innerHTML = buttons.map((b, i) => `
+    <button id="modal-btn-${i}" style="
+      padding:10px 24px;border-radius:10px;border:none;cursor:pointer;font-size:0.88rem;font-weight:600;
+      background:${b.danger ? '#e53e3e' : b.secondary ? 'rgba(124,106,247,0.15)' : 'var(--accent)'};
+      color:${b.secondary ? '#a78bfa' : 'white'};
+      border:1px solid ${b.secondary ? 'rgba(124,106,247,0.3)' : 'transparent'};
+    ">${b.label}</button>
+  `).join('');
+  buttons.forEach((b, i) => {
+    document.getElementById(`modal-btn-${i}`).onclick = () => {
+      closeModal();
+      if (b.onClick) b.onClick();
+    };
+  });
+  const modal = document.getElementById('custom-modal');
+  modal.style.display = 'flex';
+  // Close on backdrop click
+  modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+}
+
+function closeModal() {
+  document.getElementById('custom-modal').style.display = 'none';
+}
+
+function showConfirm(icon, title, body, onConfirm) {
+  showModal({
+    icon, title, body,
+    buttons: [
+      { label: 'Cancel', secondary: true },
+      { label: 'Confirm', danger: true, onClick: onConfirm }
+    ]
+  });
+}
+
+function showInputModal({ icon, title, placeholder, defaultValue = '', hint = '', onSubmit }) {
+  const inputId = 'modal-input-' + Date.now();
+  showModal({
+    icon, title,
+    body: `
+      <input id="${inputId}" type="text" value="${defaultValue}"
+        placeholder="${placeholder}"
+        style="width:100%;background:#0f0e18;border:1px solid rgba(124,106,247,0.3);border-radius:10px;
+               padding:12px 16px;font-size:0.95rem;color:#e2dff0;outline:none;text-align:center;
+               font-family:monospace;letter-spacing:2px;margin-bottom:${hint ? '8px' : '0'};box-sizing:border-box;"
+        onfocus="this.style.borderColor='#7c6af7'"
+        onblur="this.style.borderColor='rgba(124,106,247,0.3)'"
+        onkeydown="if(event.key==='Enter') document.getElementById('modal-submit-btn').click()" />
+      ${hint ? `<div style="font-size:0.75rem;color:#6b6882">${hint}</div>` : ''}
+    `,
+    buttons: [
+      { label: 'Cancel', secondary: true },
+      { label: 'Continue →', onClick: () => {
+        const val = document.getElementById(inputId)?.value?.trim();
+        if (val) onSubmit(val);
+      }}
+    ]
+  });
+  // Auto-focus the input after modal renders
+  setTimeout(() => {
+    const inp = document.getElementById(inputId);
+    if (inp) { inp.focus(); inp.select(); }
+    // Give submit button an id for Enter key
+    const btns = document.querySelectorAll('#modal-buttons button');
+    if (btns.length >= 2) btns[1].id = 'modal-submit-btn';
+  }, 50);
+}
+
+function ctxShowInviteCode() {
+  const pr = privateRooms.find(p => p.room_id === ctxTargetRoom);
+  if (!pr) return;
+  document.getElementById('room-ctx-menu').classList.remove('show');
+  showModal({
+    icon: '🔒',
+    title: pr.name,
+    body: `
+      <div style="background:rgba(124,106,247,0.1);border:1px solid rgba(124,106,247,0.2);border-radius:12px;padding:14px;margin-bottom:14px;">
+        <div style="font-size:0.72rem;color:#7c6af7;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Invite Code</div>
+        <div style="font-size:1.6rem;font-weight:800;letter-spacing:6px;color:#e2dff0;font-family:monospace">${pr.invite_code}</div>
+      </div>
+      <div style="font-size:0.82rem;color:#a09cb8;margin-bottom:8px">👥 Members (${pr.members.length})</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-bottom:4px">
+        ${pr.members.map(m => `<span style="background:rgba(124,106,247,0.15);border-radius:999px;padding:3px 10px;font-size:0.78rem;color:#a78bfa">${m}</span>`).join('')}
+      </div>
+      <div style="margin-top:12px;font-size:0.78rem;color:#6b6882">Share this code to invite people</div>
+    `,
+    buttons: [
+      { label: '📋 Copy Code', secondary: true, onClick: () => { navigator.clipboard?.writeText(pr.invite_code); toast('Invite code copied!', 'success'); } },
+      { label: 'Done', onClick: () => {} }
+    ]
+  });
+}
+
+async function ctxExitPrivateRoom() {
+  if (!ctxTargetRoom) return;
+  document.getElementById('room-ctx-menu').classList.remove('show');
+  const isDM = ctxTargetRoom.startsWith('dm_');
+  const name = isDM ? 'this DM' : (privateRooms.find(p => p.room_id === ctxTargetRoom)?.name || 'this room');
+  const roomIdToExit = ctxTargetRoom;
+
+  showConfirm('🚪', 'Exit Room', `Leave <b style="color:#e2dff0">${name}</b>?<br><span style="font-size:0.8rem">You can rejoin with the invite code.</span>`, async () => {
+    if (isDM) {
+      dmConversations = dmConversations.filter(d => d.room_id !== roomIdToExit);
+      renderDMs();
+    } else {
+      try {
+        await fetch(`${API}/rooms/exit-private?room_id=${encodeURIComponent(roomIdToExit)}&token=${encodeURIComponent(token)}`, { method: 'POST' });
+      } catch(e) {}
+      privateRooms = privateRooms.filter(p => p.room_id !== roomIdToExit);
+      renderPrivateRooms();
+    }
+    if (currentRoom === roomIdToExit) {
+      currentRoom = null;
+      if (ws) { ws.close(); ws = null; }
+      document.getElementById('empty-state').style.display = 'flex';
+      document.getElementById('chat-main').style.display = 'none';
+    }
+    toast('Left ' + name, 'info');
+  });
+}
+
+function ctxClearMessages() {
+  if (!ctxTargetRoom) return;
+  messageStore[ctxTargetRoom] = [];
+  if (currentRoom === ctxTargetRoom) renderMessages(ctxTargetRoom);
+  toast('Messages cleared locally', 'success');
+  closeRoomCtx();
+}
+
+function ctxBlockRoom() {
+  if (!ctxTargetRoom) return;
+  blockedRooms.add(ctxTargetRoom);
+  if (currentUser) localStorage.setItem('chat_blocked_' + currentUser.username, JSON.stringify([...blockedRooms]));
+  if (currentRoom === ctxTargetRoom) joinRoom(ctxTargetRoom);
+  renderRooms();
+  toast('Room blocked: #' + ctxTargetRoom, 'error');
+  closeRoomCtx();
+}
+
+function ctxUnblockRoom(roomId) {
+  const target = roomId || ctxTargetRoom;
+  if (!target) return;
+  blockedRooms.delete(target);
+  if (currentUser) localStorage.setItem('chat_blocked_' + currentUser.username, JSON.stringify([...blockedRooms]));
+  renderRooms();
+  if (currentRoom === target) joinRoom(target);
+  toast('Room unblocked: #' + target, 'success');
+  closeRoomCtx();
+}
+
+function ctxDeleteRoom() {
+  if (!ctxTargetRoom) return;
+  const r = ctxTargetRoom;
+  // Can't delete default rooms
+  const defaults = ['YOU'];
+  if (defaults.includes(r)) {
+    toast('Cannot delete default rooms', 'error');
+    closeRoomCtx();
+    return;
+  }
+  rooms = rooms.filter(x => x !== r);
+  persistRooms();
+  delete messageStore[r];
+  blockedRooms.delete(r);
+  if (currentUser) localStorage.setItem('chat_blocked_' + currentUser.username, JSON.stringify([...blockedRooms]));
+  if (currentRoom === r) {
+    currentRoom = null;
+    document.getElementById('chat-main').style.display = 'none';
+    document.getElementById('empty-state').style.display = 'flex';
+    if (ws) { ws.close(); ws = null; }
+  }
+  renderRooms();
+  toast('Room deleted: #' + r, 'error');
+  closeRoomCtx();
+}
+
+// Close context menu on outside click
+document.addEventListener('click', (e) => {
+  const menu = document.getElementById('room-ctx-menu');
+  if (menu && !menu.contains(e.target)) closeRoomCtx();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeRoomCtx();
+});
+
+</script>
+</body>
+</html>
